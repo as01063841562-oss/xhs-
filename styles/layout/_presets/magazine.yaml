@@ -1,0 +1,66 @@
+name: "杂志感"
+description: "杂志风排版，有设计感，适合品牌调性强的公众号"
+created_from: "preset"
+
+css:
+  body:
+    font_size: "16px"
+    line_height: "1.8"
+    color: "#333333"
+    background: "#ffffff"
+    padding: "0 10px"
+    font_family: "Georgia, 'Noto Serif SC', 'Source Han Serif CN', serif"
+
+  paragraph:
+    margin_bottom: "22px"
+    text_indent: "2em"
+
+  section_title:
+    style: "left_bar"
+    color: "#c0392b"
+    font_size: "20px"
+    margin_top: "45px"
+    margin_bottom: "20px"
+    bar_color: "#c0392b"
+    bar_width: "4px"
+
+  sub_title:
+    color: "#c0392b"
+    font_size: "17px"
+    font_weight: "bold"
+    margin_top: "30px"
+    margin_bottom: "14px"
+
+  highlight:
+    color: "#c0392b"
+    bold: true
+
+  blockquote:
+    border_left_color: "#c0392b"
+    background: "#fdf2f2"
+    padding: "18px 22px"
+    border_radius: "0 8px 8px 0"
+
+  image:
+    border_radius: "4px"
+    margin: "25px auto"
+    max_width: "100%"
+    box_shadow: "0 2px 8px rgba(0,0,0,0.1)"
+
+  cta_card:
+    background: "#fdf2f2"
+    border_radius: "8px"
+    padding: "22px"
+
+  divider:
+    style: "double"
+    color: "#ddd"
+    margin: "35px 0"
+
+  code_block:
+    background: "#fdf6f0"
+    color: "#4a3728"
+    font_size: "13px"
+    padding: "16px 20px"
+    border_radius: "6px"
+    line_height: "1.6"

@@ -1,0 +1,38 @@
+name: "极简黑白头图"
+description: "纯白底+黑色大标题+极简线条，高级感强"
+created_from: "preset"
+
+design:
+  layout: "text_icon"
+  background: "pure white (#ffffff)"
+  text_position: "center"
+  text_max_chars: 10
+  text_style: "large bold black text, elegant serif or modern sans-serif"
+  icon_style: "single line drawing, black outline, minimal and elegant"
+  icon_position: "below title text"
+
+safe_zone:
+  description: "核心信息必须在中间 383x383 区域内"
+  rule: "center all important elements within a 383x383 square area"
+
+sizes:
+  cover_large:
+    width: 900
+    height: 383
+    ratio: "2.35:1"
+  cover_small:
+    width: 383
+    height: 383
+    ratio: "1:1"
+
+prompt_template:
+  style: "pure white background, ultra minimal, high-end editorial feel"
+  text_element: "large bold black title text centered, elegant typography"
+  icon_element: "single continuous line drawing, black ink, minimal abstract icon"
+  composition: "all key elements centered within middle square area, maximum negative space"
+  negative: "colorful, gradient, busy, hand drawn doodle, cartoon, playful, text at bottom"
+
+rules:
+  - "底部不放文字"
+  - "核心元素居中"
+  - "极简 = 留白 > 装饰"

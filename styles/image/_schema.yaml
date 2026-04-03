@@ -1,0 +1,35 @@
+# 配图风格配置结构定义
+
+schema:
+  name: "string - 风格名称"
+  description: "string - 简短描述"
+  created_from: "string - preset | sample | manual"
+
+  prompt_template:
+    style: "string - 风格描述关键词"
+    elements: "string - 常用视觉元素"
+    background: "string - 背景描述"
+    color_scheme: "string - 配色方案"
+    negative: "string - 不要出现的元素"
+
+  sizes:
+    cover:
+      width: "int"
+      height: "int"
+      description: "string"
+    illustration:
+      width: "int"
+      height: "int"
+      description: "string"
+    thumbnail:
+      width: "int"
+      height: "int"
+      description: "string"
+
+  illustration_rules:
+    frequency: "int - 每多少字一张图"
+    max_per_article: "int"
+    min_per_article: "int"
+    must_have_info: "bool - 图片是否必须有信息量"
+
+  samples: "list（可选）- 提炼来源的范图路径"

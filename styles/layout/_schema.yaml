@@ -1,0 +1,60 @@
+# 排版风格配置结构定义
+
+schema:
+  name: "string - 风格名称"
+  description: "string - 简短描述"
+  created_from: "string - preset | sample | manual"
+
+  css:
+    body:
+      font_size: "string - 正文字号"
+      line_height: "string - 行高"
+      color: "string - 正文颜色"
+      background: "string - 背景色"
+      padding: "string - 内边距"
+      font_family: "string - 字体"
+
+    paragraph:
+      margin_bottom: "string - 段落间距"
+      text_indent: "string - 首行缩进（0 = 无缩进）"
+
+    section_title:
+      style: "string - 标题样式类型：centered_number | left_bar | bold_large | icon_prefix"
+      color: "string - 标题颜色"
+      font_size: "string - 标题字号"
+      margin_top: "string"
+      margin_bottom: "string"
+      # 以下根据 style 类型可选
+      dot_color: "string - 圆点颜色（centered_number）"
+      bar_color: "string - 左侧竖条颜色（left_bar）"
+      bar_width: "string - 竖条宽度（left_bar）"
+
+    highlight:
+      color: "string - 高亮文字颜色"
+      bold: "bool - 是否加粗"
+      background: "string（可选）- 高亮背景色"
+
+    blockquote:
+      border_left_color: "string"
+      background: "string"
+      padding: "string"
+      border_radius: "string"
+
+    image:
+      border_radius: "string"
+      margin: "string"
+      max_width: "string"
+      box_shadow: "string（可选）"
+
+    cta_card:
+      background: "string"
+      border_radius: "string"
+      padding: "string"
+      border: "string（可选）"
+
+    divider:
+      style: "string - 分隔线样式"
+      color: "string"
+      margin: "string"
+
+  samples: "list（可选）- 提炼来源的范例 HTML 路径"

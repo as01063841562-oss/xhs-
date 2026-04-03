@@ -1,0 +1,6 @@
+2026/03/31-11:02:04.040 e585528 Reusing MANIFEST /Users/lmsx/Documents/Playground/edu-media-openclaw/.runtime/chrome-user-profile/Profile 1/Local Storage/leveldb/MANIFEST-000001
+2026/03/31-11:02:04.045 e585528 Recovering log #6
+2026/03/31-11:02:04.046 e585528 Reusing old log /Users/lmsx/Documents/Playground/edu-media-openclaw/.runtime/chrome-user-profile/Profile 1/Local Storage/leveldb/000006.log 
+2026/04/02-01:06:09.625 e585528 Level-0 table #10: started
+2026/04/02-01:06:09.631 e585528 Level-0 table #10: 10532 bytes OK
+2026/04/02-01:06:09.635 e585528 Delete type=0 #6

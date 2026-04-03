@@ -1,0 +1,8 @@
+2026/03/30-03:12:48.453 36420 Creating DB /Users/lmsx/Library/Application Support/Google/Chrome/Profile 1/Local Storage/leveldb since it was missing.
+2026/03/30-03:12:48.456 36420 Reusing MANIFEST /Users/lmsx/Library/Application Support/Google/Chrome/Profile 1/Local Storage/leveldb/MANIFEST-000001
+2026/03/30-09:38:17.097 36426 Level-0 table #5: started
+2026/03/30-09:38:17.113 36426 Level-0 table #5: 910137 bytes OK
+2026/03/30-09:38:17.116 36426 Delete type=0 #3
+2026/03/30-09:40:59.289 36426 Level-0 table #7: started
+2026/03/30-09:40:59.294 36426 Level-0 table #7: 65775 bytes OK
+2026/03/30-09:40:59.296 36426 Delete type=0 #4

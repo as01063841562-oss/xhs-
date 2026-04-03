@@ -1,0 +1,30 @@
+name: "扁平插画"
+description: "现代扁平设计风格，色彩明快，适合科技/商务主题"
+created_from: "preset"
+
+prompt_template:
+  style: "flat design illustration, modern vector style, geometric shapes, clean lines"
+  elements: "abstract characters, geometric icons, data charts, device mockups"
+  background: "solid color or subtle gradient background"
+  color_scheme: "bright saturated colors, complementary palette, blue (#4A90D9) and orange (#F5A623) primary"
+  negative: "hand drawn, sketch, photographic, 3D, complex textures, gradients"
+
+sizes:
+  cover:
+    width: 900
+    height: 383
+    description: "公众号头图 2.35:1"
+  illustration:
+    width: 1024
+    height: 768
+    description: "文章插图 4:3"
+  thumbnail:
+    width: 200
+    height: 200
+    description: "次条小图 1:1"
+
+illustration_rules:
+  frequency: 800
+  max_per_article: 6
+  min_per_article: 2
+  must_have_info: true

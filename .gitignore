@@ -1,0 +1,29 @@
+# 敏感信息
+config/config.yaml
+config/credential.json
+config/.token_cache.json
+
+# 生成产物
+output/*
+!output/.gitkeep
+
+# 日志
+logs/*
+!logs/.gitkeep
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# 临时文件
+*.log
+*.tmp
+.DS_Store
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

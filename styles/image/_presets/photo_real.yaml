@@ -1,0 +1,30 @@
+name: "写实摄影"
+description: "高质量 AI 摄影风格，适合商务/品牌类文章"
+created_from: "preset"
+
+prompt_template:
+  style: "professional photography, high quality, cinematic lighting, shallow depth of field"
+  elements: "real objects, workspace scenes, technology devices, natural settings"
+  background: "blurred background, bokeh effect, natural lighting"
+  color_scheme: "warm natural tones, soft contrast, professional color grading"
+  negative: "cartoon, illustration, sketch, hand drawn, low quality, blurry, distorted"
+
+sizes:
+  cover:
+    width: 900
+    height: 383
+    description: "公众号头图 2.35:1"
+  illustration:
+    width: 1024
+    height: 768
+    description: "文章插图 4:3"
+  thumbnail:
+    width: 200
+    height: 200
+    description: "次条小图 1:1"
+
+illustration_rules:
+  frequency: 1000
+  max_per_article: 5
+  min_per_article: 2
+  must_have_info: false

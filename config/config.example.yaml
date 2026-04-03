@@ -1,0 +1,60 @@
+# 微信公众号自动化 Skill - 主配置文件
+# 复制此文件为 config.yaml 并填入你的信息
+
+wechat:
+  app_id: "wx_your_app_id"
+  app_secret: "your_app_secret"
+
+# 飞书 appId / appSecret 优先从 ~/.openclaw/openclaw.json 读取
+# 这里主要保留接收消息的路由；appId/appSecret 仅用于临时本地覆盖
+feishu:
+  receive_id: "ou_your_open_id"
+  receive_id_type: "open_id"
+  api_base: "https://open.feishu.cn/open-apis"
+
+image_api:
+  base_url: "https://api.openai.com"
+  api_key: "sk-your-api-key"
+  model: "dall-e-3"
+  proxy: ""
+  timeout: 60
+  backend: "gemini_web"
+
+browser_image:
+  launcher: "open"
+  chrome_app: "Google Chrome"
+  profile_dir: "./.runtime/chrome-user-profile"
+  source_profile_dir: "~/Library/Application Support/Google/Chrome"
+  remote_debug_port: 9227
+  gemini_url: "https://gemini.google.com/app"
+  launch_timeout: 90
+  page_timeout: 180
+
+gemini_image:
+  backend: "gemini_web"
+  command: "/opt/homebrew/bin/gemini"
+  model: "gemini-2.5-flash"
+  output_dir: "/tmp/gemini_images"
+  timeout: 180
+
+defaults:
+  writing_style: "tech_blogger"
+  image_style: "hand_drawn"
+  cover_style: "tech_blue"
+  layout_style: "blue_dot"
+
+article:
+  author: "你的笔名"
+  default_length: 6000
+  min_length: 3000
+  max_length: 10000
+  illustration_frequency: 700
+  max_illustrations: 8
+
+knowledge:
+  mode: "manual"
+  directory:
+    scan_paths:
+      - "./knowledge/sources/"
+    file_types: [".md", ".txt"]
+    recursive: true

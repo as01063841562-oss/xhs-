@@ -1,0 +1,37 @@
+{
+   "checksum": "a5addf762c6cb5c929a18f23b9bdc4af",
+   "roots": {
+      "bookmark_bar": {
+         "children": [  ],
+         "date_added": "13419339168452764",
+         "date_last_used": "0",
+         "date_modified": "0",
+         "guid": "0bc5d13f-2cba-5d74-951f-3f233fe6c908",
+         "id": "1",
+         "name": "书签栏",
+         "type": "folder"
+      },
+      "other": {
+         "children": [  ],
+         "date_added": "13419339168452764",
+         "date_last_used": "0",
+         "date_modified": "0",
+         "guid": "82b081ec-3dd3-529c-8475-ab6c344590dd",
+         "id": "2",
+         "name": "其他书签",
+         "type": "folder"
+      },
+      "synced": {
+         "children": [  ],
+         "date_added": "13419339168452764",
+         "date_last_used": "0",
+         "date_modified": "0",
+         "guid": "4cf2e351-0e85-532b-bb37-df045d8f8d0f",
+         "id": "3",
+         "name": "移动设备书签",
+         "type": "folder"
+      }
+   },
+   "sync_metadata": "CuUBCsQBCIiBAhK9ASAAkgGoAQqlAQoOY2hyb21lX3N5bmNfYm0SBTUxIWJtGhIJlZ+nHTtOBgARlZ+nHTtOBgAiNAmr7HUdO04GABADGfAIyUm8Uq4XIAEqHDUxIWJtL2ZkOjkxNjM3MjM1NTk0Njg4OTMxNjEiNAmr7HUdO04GABADGfAIyUm8Uq4XIAEqHDUxIWJtL2ZkOjkxNjM3MjM1NTk0Njg4OTMxNjEp/AKsHTtOBgA4gIenDuoBDAiDmqnOBhDAtq+EAxIAKhhaMGM4ck5UQTZwbU8rdTFWOW90VktBPT1IAxLDAQgCEr4BChxZY1NUb252RVNQd3FDczRMMmNyVmh2NjhMOTg9EmZaOkFEcXRBWnp5aVN6SFN2azNKdGhSZVNTbnVhdmVBYU8yT1NwQllNRnBLTXRvYWdpSEhIanN0K1ZVWFROUmFsOEwwRHRLaTVPcFVnamtuQkxkYlppSGxDbmZvL09KWEpoZlhnPT0YACAAKAAw8IvIgpfHkwM4AEAAShxvUFZraHdCUmJWNjVLQ1dSMitJT05IV29PdTg9WgBlAAAAABKrAQgBEqYBChx5eEovNmZ2a2VjcjdrcDVFUXpCNHRXTHBkYkU9Ek5aOkFEcXRBWnhRQU5LR2pLTkQxZllkVmpMc21kWm9MUjlJbDdvb2tuV0lna3FpU2RkcHpIeURlblJQSTRZTVhOVVg5YzA3UjI4RmdYTlkYACAAKAAw8IvIgpfHkwM4AEAAShxhUkNXTGdoRjliNUlucUtJRHZ1Si9qdlFrRmM9WgBlAAAAABLDAQgDEr4BChxuamdEdTg4ZUNydlhwODZwRDdmSEdjcUZwODg9EmZaOkFEcXRBWnl4alhSMUhHSTlHdG9EVERTL2hUTUFuenpDYUNhSTZabGV4bVZEK3NER1VhNy8vdlpPaGRSN0dkMnBiaG9id1E0NWdkSXYzcFpIMGg3dmVzc0M0amY5MU9YV0ZBPT0YACAAKAAw8IvIgpfHkwM4AEAAShx5ek5CMDFjbjU0QTdjUlUwdVQrL1BnbVR0VW89WgBlAAAAADABOAA=",
+   "version": 1
+}

@@ -1,0 +1,8 @@
+2026/03/30-03:12:48.452 36387 Creating DB /Users/lmsx/Library/Application Support/Google/Chrome/Profile 1/Sync Data/LevelDB since it was missing.
+2026/03/30-03:12:48.454 36387 Reusing MANIFEST /Users/lmsx/Library/Application Support/Google/Chrome/Profile 1/Sync Data/LevelDB/MANIFEST-000001
+2026/03/30-03:24:21.835 3639d Level-0 table #5: started
+2026/03/30-03:24:21.837 3639d Level-0 table #5: 202636 bytes OK
+2026/03/30-03:24:21.839 3639d Delete type=0 #3
+2026/03/30-14:20:34.907 36385 Level-0 table #7: started
+2026/03/30-14:20:34.911 36385 Level-0 table #7: 189793 bytes OK
+2026/03/30-14:20:34.913 36385 Delete type=0 #4

@@ -1,0 +1,30 @@
+name: "手绘草图"
+description: "Nano Banana 风格的手绘草图插画，简洁有趣"
+created_from: "preset"
+
+prompt_template:
+  style: "hand drawn sketch, doodle style, minimalist business illustration, pencil drawing feel"
+  elements: "stick figures, simple icons, flow arrows, speech bubbles, light annotations"
+  background: "white background, clean, minimal"
+  color_scheme: "black outlines with blue-purple accent colors (#667eea, #764ba2)"
+  negative: "photographic, 3D render, complex, cluttered, realistic faces, gradient backgrounds"
+
+sizes:
+  cover:
+    width: 900
+    height: 383
+    description: "公众号头图 2.35:1"
+  illustration:
+    width: 1024
+    height: 768
+    description: "文章插图 4:3"
+  thumbnail:
+    width: 200
+    height: 200
+    description: "次条小图 1:1"
+
+illustration_rules:
+  frequency: 700
+  max_per_article: 8
+  min_per_article: 3
+  must_have_info: true

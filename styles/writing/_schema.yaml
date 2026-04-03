@@ -1,0 +1,35 @@
+# 文风配置结构定义
+# 所有文风 YAML 文件必须符合此结构
+
+schema:
+  name: "string - 风格名称"
+  description: "string - 简短描述"
+  created_from: "string - 来源：preset（预置）| sample（范文提炼）| manual（手动创建）"
+
+  persona: "string - 人设描述（你是谁，什么身份）"
+  tone: "string - 总体语气"
+
+  sentence_style:
+    prefer: "list - 推荐的句式/表达方式"
+    avoid: "list - 禁止使用的句式/表达方式"
+
+  catchphrases: "list - 标志性金句（3-10个）"
+
+  structure:
+    opening: "string - 开头写法"
+    body: "string - 正文写法"
+    closing: "string - 结尾写法"
+
+  article_length:
+    min: "int - 最少字数"
+    max: "int - 最多字数"
+    recommended: "int - 建议字数"
+
+  content_density:
+    techniques_per_article: "int - 每篇至少包含多少技巧"
+    cases_per_article: "int - 每篇至少包含多少案例"
+    actionable_steps: "bool - 是否必须有可执行步骤"
+
+  taboos: "list - 内容禁忌"
+
+  samples: "list（可选）- 提炼来源的范文路径"

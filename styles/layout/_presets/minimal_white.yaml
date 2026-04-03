@@ -1,0 +1,65 @@
+name: "极简白"
+description: "极简留白风格，大段间距，阅读体验舒适"
+created_from: "preset"
+
+css:
+  body:
+    font_size: "15px"
+    line_height: "2.0"
+    color: "#2c2c2c"
+    background: "#ffffff"
+    padding: "0 12px"
+    font_family: "'PingFang SC', 'Helvetica Neue', 'Microsoft YaHei', sans-serif"
+
+  paragraph:
+    margin_bottom: "30px"
+    text_indent: "0"
+
+  section_title:
+    style: "bold_large"
+    color: "#1a1a1a"
+    font_size: "18px"
+    margin_top: "50px"
+    margin_bottom: "25px"
+
+  sub_title:
+    color: "#1a1a1a"
+    font_size: "16px"
+    font_weight: "bold"
+    margin_top: "32px"
+    margin_bottom: "14px"
+
+  highlight:
+    color: "#1a1a1a"
+    bold: true
+    background: "#fff3cd"
+
+  blockquote:
+    border_left_color: "#d0d0d0"
+    background: "#fafafa"
+    padding: "20px 25px"
+    border_radius: "0"
+
+  image:
+    border_radius: "0"
+    margin: "30px auto"
+    max_width: "100%"
+
+  cta_card:
+    background: "#f9f9f9"
+    border_radius: "0"
+    padding: "25px"
+    border: "1px solid #eeeeee"
+
+  divider:
+    style: "solid"
+    color: "#eeeeee"
+    margin: "40px 0"
+
+  code_block:
+    background: "#f8f8f8"
+    color: "#2c2c2c"
+    font_size: "13px"
+    padding: "18px 22px"
+    border_radius: "0"
+    line_height: "1.7"

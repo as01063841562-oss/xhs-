@@ -1,0 +1,47 @@
+name: "蓝紫渐变头图"
+description: "蓝紫渐变底+居中大标题+简笔画图标，统一品牌辨识度"
+created_from: "manual"
+
+# 设计规范
+design:
+  layout: "text_icon"                    # 纯色底+文字+图标
+  background: "gradient from #667eea to #764ba2, subtle and clean"
+  text_position: "center"               # 标题文字居中
+  text_max_chars: 10                    # 标题最多10个字
+  text_style: "large bold white text, clean sans-serif font"
+  icon_style: "simple line icon or stick figure, white outline, related to article topic"
+  icon_position: "beside or below title text"
+
+# 安全区域（朋友圈分享会裁剪成正方形，核心内容必须在中间）
+safe_zone:
+  description: "核心信息（标题+图标）必须在中间 383x383 区域内"
+  rule: "center all important elements within a 383x383 square area"
+
+# 尺寸
+sizes:
+  cover_large:
+    width: 900
+    height: 383
+    ratio: "2.35:1"
+    description: "订阅号列表封面大图"
+  cover_small:
+    width: 383
+    height: 383
+    ratio: "1:1"
+    description: "朋友圈分享/聊天转发小图"
+
+# Prompt 模板
+prompt_template:
+  style: "clean gradient background from blue (#667eea) to purple (#764ba2), modern minimalist design"
+  text_element: "large bold white title text centered in the image, clean sans-serif font, maximum 10 characters"
+  icon_element: "simple white line icon or stick figure illustration related to the topic, subtle and not overpowering"
+  composition: "all key elements (title text + icon) must be centered within the middle square area for safe cropping"
+  negative: "cluttered, busy background, multiple colors, realistic photo, dark theme, text at bottom, small text, decorative borders, rainbow, hearts, complex patterns"
+
+# 禁忌
+rules:
+  - "底部不放文字（会被标题遮挡）"
+  - "核心元素居中（朋友圈裁剪安全）"
+  - "背景干净，不堆砌"
+  - "每期风格保持一致"
+  - "文字不超过10字"

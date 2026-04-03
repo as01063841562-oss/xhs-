@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&display=swap');
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  width: 1080px; height: 1440px;
+  font-family: 'Noto Sans SC', 'PingFang SC', sans-serif;
+  background: linear-gradient(180deg, #E3F2FD 0%, #BBDEFB 100%);
+  display: flex; flex-direction: column;
+  padding: 60px 40px;
+  position: relative;
+}
+.header {
+  text-align: center; margin-bottom: 40px;
+}
+.title {
+  font-size: 68px; font-weight: 900; color: #D32F2F;
+  text-shadow: 2px 2px 0 rgba(0,0,0,0.05);
+}
+.subtitle {
+  font-size: 30px; font-weight: 700; color: #1565C0;
+  background: #FFF9C4; padding: 8px 24px; border-radius: 20px;
+  display: inline-block; margin-top: 12px;
+}
+.compare-container {
+  flex: 1; display: flex; gap: 20px;
+}
+.compare-side {
+  flex: 1; display: flex; flex-direction: column;
+}
+.side-header {
+  text-align: center; padding: 18px;
+  font-size: 40px; font-weight: 900; border-radius: 20px 20px 0 0;
+  color: #fff;
+}
+.side-header.left { background: linear-gradient(135deg, #FFB74D 0%, #FF9800 100%); }
+.side-header.right { background: linear-gradient(135deg, #EF5350 0%, #D32F2F 100%); }
+.compare-body {
+  flex: 1; display: flex; flex-direction: column; gap: 0;
+}
+.compare-row {
+  display: flex; min-height: 130px;
+}
+.row-label {
+  width: 100%; text-align: center;
+  padding: 16px 12px; display: flex; flex-direction: column;
+  justify-content: center; align-items: center;
+  background: #fff; border-bottom: 2px solid #f0f0f0;
+}
+.label-title {
+  font-size: 26px; font-weight: 700; color: #D32F2F;
+  margin-bottom: 8px;
+}
+.label-icon {
+  font-size: 32px; margin-bottom: 6px;
+}
+.row-content {
+  font-size: 24px; color: #444; line-height: 1.6; font-weight: 400;
+  padding: 0 8px;
+}
+.center-labels {
+  display: flex; flex-direction: column;
+  width: 200px; flex-shrink: 0;
+  margin-top: 72px;
+}
+.center-label {
+  min-height: 130px; display: flex; align-items: center; justify-content: center;
+  font-size: 26px; font-weight: 700; color: #D32F2F;
+  border-bottom: 2px solid transparent;
+}
+.center-icon { font-size: 30px; margin-right: 4px; }
+.footer {
+  margin-top: 30px; text-align: center;
+}
+.tags {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 12px;
+  margin-bottom: 20px;
+}
+.tag {
+  background: #FFF3CD; color: #E65100; font-size: 22px;
+  padding: 6px 18px; border-radius: 16px; font-weight: 500;
+}
+.cta {
+  background: linear-gradient(135deg, #FF6F00 0%, #F4511E 100%);
+  color: #fff; font-size: 28px; font-weight: 700;
+  padding: 16px 40px; border-radius: 30px;
+  display: inline-block;
+}
+.watermark {
+  position: absolute; bottom: 20px; right: 30px;
+  font-size: 18px; color: rgba(0,0,0,0.15);
+}
+</style>
+</head>
+<body>
+  <div class="header">
+    <div class="title">{{TITLE}}</div>
+    <span class="subtitle">{{SUBTITLE}}</span>
+  </div>
+  <div class="compare-container">
+    <div class="compare-side">
+      <div class="side-header left">{{LEFT_TITLE}}</div>
+      <div class="compare-body">{{LEFT_ITEMS}}</div>
+    </div>
+    <div class="center-labels">{{CENTER_LABELS}}</div>
+    <div class="compare-side">
+      <div class="side-header right">{{RIGHT_TITLE}}</div>
+      <div class="compare-body">{{RIGHT_ITEMS}}</div>
+    </div>
+  </div>
+  <div class="footer">
+    <div class="tags">{{TAGS}}</div>
+    <div class="cta">💡 收藏对比图 · 一目了然</div>
+  </div>
+  <div class="watermark">小红书教育干货</div>
+</body>
+</html>

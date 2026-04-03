@@ -1,0 +1,9 @@
+2026/03/31-11:02:03.990 e5854d9 Reusing MANIFEST /Users/lmsx/Documents/Playground/edu-media-openclaw/.runtime/chrome-user-profile/Profile 1/Sync Data/LevelDB/MANIFEST-000001
+2026/03/31-11:02:03.999 e5854d9 Recovering log #6
+2026/03/31-11:02:04.003 e5854d9 Reusing old log /Users/lmsx/Documents/Playground/edu-media-openclaw/.runtime/chrome-user-profile/Profile 1/Sync Data/LevelDB/000006.log 
+2026/04/02-00:48:18.679 e5854db Level-0 table #10: started
+2026/04/02-00:48:18.685 e5854db Level-0 table #10: 111598 bytes OK
+2026/04/02-00:48:18.687 e5854db Delete type=0 #6
+2026/04/02-11:02:08.192 e5854cf Level-0 table #12: started
+2026/04/02-11:02:08.207 e5854cf Level-0 table #12: 87062 bytes OK
+2026/04/02-11:02:08.209 e5854cf Delete type=0 #9

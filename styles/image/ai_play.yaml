@@ -1,0 +1,30 @@
+name: "手绘蓝紫配图"
+description: "Nano Banana 手绘风格 + 蓝紫渐变色系，统一视觉风格"
+created_from: "manual"
+
+prompt_template:
+  style: "hand drawn sketch, doodle style, minimalist business illustration, pencil drawing feel, cute and informative"
+  elements: "stick figures, simple icons, flow arrows, speech bubbles, light annotations, comparison charts"
+  background: "white background, clean, minimal"
+  color_scheme: "black outlines with blue-purple accent (#667eea, #764ba2), occasional orange highlight (#f5a623)"
+  negative: "photographic, 3D render, complex, cluttered, realistic faces, gradient backgrounds, dark theme"
+
+sizes:
+  cover:
+    width: 900
+    height: 383
+    description: "公众号头图 2.35:1"
+  illustration:
+    width: 1024
+    height: 768
+    description: "文章插图 4:3"
+  thumbnail:
+    width: 200
+    height: 200
+    description: "次条小图 1:1"
+
+illustration_rules:
+  frequency: 600
+  max_per_article: 8
+  min_per_article: 4
+  must_have_info: true

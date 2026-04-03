@@ -1,0 +1,63 @@
+name: "暖橙"
+description: "温暖橙色调，适合生活/美食/个人成长类公众号"
+created_from: "preset"
+
+css:
+  body:
+    font_size: "16px"
+    line_height: "1.85"
+    color: "#4a4a4a"
+    background: "#ffffff"
+    padding: "0 10px"
+    font_family: "-apple-system, 'PingFang SC', 'Microsoft YaHei', sans-serif"
+
+  paragraph:
+    margin_bottom: "24px"
+    text_indent: "0"
+
+  section_title:
+    style: "icon_prefix"
+    color: "#e67e22"
+    font_size: "19px"
+    margin_top: "40px"
+    margin_bottom: "18px"
+
+  sub_title:
+    color: "#e67e22"
+    font_size: "16px"
+    font_weight: "bold"
+    margin_top: "26px"
+    margin_bottom: "12px"
+
+  highlight:
+    color: "#e67e22"
+    bold: true
+
+  blockquote:
+    border_left_color: "#f39c12"
+    background: "#fef9e7"
+    padding: "16px 20px"
+    border_radius: "0 6px 6px 0"
+
+  image:
+    border_radius: "12px"
+    margin: "20px auto"
+    max_width: "100%"
+
+  cta_card:
+    background: "#fef9e7"
+    border_radius: "16px"
+    padding: "20px"
+
+  divider:
+    style: "dashed"
+    color: "#f0d9b5"
+    margin: "30px 0"
+
+  code_block:
+    background: "#fef9e7"
+    color: "#4a4a4a"
+    font_size: "13px"
+    padding: "16px 20px"
+    border_radius: "8px"
+    line_height: "1.6"

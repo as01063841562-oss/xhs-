@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700;900&display=swap');
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  width: 1080px; height: 1440px;
+  font-family: 'Noto Sans SC', 'PingFang SC', sans-serif;
+  background: linear-gradient(180deg, #FFF9C4 0%, #FFF8E1 100%);
+  display: flex; flex-direction: column;
+  padding: 60px 50px;
+  position: relative;
+}
+.header {
+  text-align: center; margin-bottom: 40px;
+}
+.title {
+  font-size: 68px; font-weight: 900;
+  background: linear-gradient(135deg, #D32F2F 0%, #FF6F00 100%);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+  line-height: 1.3;
+}
+.subtitle {
+  font-size: 28px; font-weight: 700; color: #E65100;
+  background: #FFF3CD; padding: 10px 28px; border-radius: 20px;
+  display: inline-block; margin-top: 12px;
+  border: 2px solid #FFB74D;
+}
+.timeline-container {
+  flex: 1; position: relative; padding: 0 40px;
+}
+.timeline-line {
+  position: absolute; left: 120px; top: 0; bottom: 0;
+  width: 6px; background: linear-gradient(180deg, #D32F2F 0%, #FF6F00 100%);
+  border-radius: 3px;
+}
+.timeline-item {
+  position: relative; display: flex; align-items: flex-start;
+  margin-bottom: 20px; padding-left: 100px;
+}
+.timeline-month {
+  position: absolute; left: 0; top: 8px;
+  width: 80px; text-align: right;
+  font-size: 22px; font-weight: 900; color: #D32F2F;
+}
+.timeline-dot {
+  position: absolute; left: 108px; top: 12px;
+  width: 30px; height: 30px; border-radius: 50%;
+  background: linear-gradient(135deg, #D32F2F 0%, #FF6F00 100%);
+  border: 4px solid #FFF8E1;
+  z-index: 1;
+}
+.timeline-content {
+  margin-left: 60px; background: #fff;
+  border-radius: 16px; padding: 18px 24px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+  border-left: 5px solid #FF6F00;
+  flex: 1;
+}
+.timeline-title {
+  font-size: 28px; font-weight: 700; color: #D32F2F;
+  margin-bottom: 6px;
+}
+.timeline-desc {
+  font-size: 24px; color: #555; line-height: 1.5;
+}
+.footer {
+  margin-top: 30px; text-align: center;
+}
+.tags {
+  display: flex; flex-wrap: wrap; justify-content: center; gap: 12px;
+  margin-bottom: 20px;
+}
+.tag {
+  background: #FFE0B2; color: #E65100; font-size: 22px;
+  padding: 6px 18px; border-radius: 16px; font-weight: 500;
+}
+.cta {
+  background: linear-gradient(135deg, #D32F2F 0%, #C62828 100%);
+  color: #fff; font-size: 28px; font-weight: 700;
+  padding: 16px 40px; border-radius: 30px;
+  display: inline-block;
+}
+.deco {
+  position: absolute; font-size: 60px; opacity: 0.15;
+}
+.deco-1 { top: 80px; right: 60px; }
+.deco-2 { bottom: 120px; left: 40px; }
+</style>
+</head>
+<body>
+  <span class="deco deco-1">📅</span>
+  <span class="deco deco-2">⭐</span>
+  <div class="header">
+    <div class="title">{{TITLE}}</div>
+    <span class="subtitle">{{SUBTITLE}}</span>
+  </div>
+  <div class="timeline-container">
+    <div class="timeline-line"></div>
+    {{TIMELINE_ITEMS}}
+  </div>
+  <div class="footer">
+    <div class="tags">{{TAGS}}</div>
+    <div class="cta">📌 家长必收藏 · 关注获取更多</div>
+  </div>
+</body>
+</html>

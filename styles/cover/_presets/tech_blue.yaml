@@ -1,0 +1,38 @@
+name: "科技蓝头图"
+description: "深蓝底+白色标题+科技感图标，专业严肃"
+created_from: "preset"
+
+design:
+  layout: "text_icon"
+  background: "solid dark blue (#1a237e) or deep navy gradient"
+  text_position: "center"
+  text_max_chars: 10
+  text_style: "large bold white text, modern tech font"
+  icon_style: "geometric tech icon, circuit-like pattern, white or light blue outline"
+  icon_position: "beside or below title text"
+
+safe_zone:
+  description: "核心信息必须在中间 383x383 区域内"
+  rule: "center all important elements within a 383x383 square area"
+
+sizes:
+  cover_large:
+    width: 900
+    height: 383
+    ratio: "2.35:1"
+  cover_small:
+    width: 383
+    height: 383
+    ratio: "1:1"
+
+prompt_template:
+  style: "solid dark navy blue background (#1a237e), professional tech aesthetic, clean and minimal"
+  text_element: "large bold white title text centered, modern sans-serif font"
+  icon_element: "geometric tech icon, circuit pattern or abstract tech symbol, light blue (#64b5f6) accent"
+  composition: "all key elements centered within middle square area for safe cropping"
+  negative: "colorful, playful, hand drawn, cartoon, cluttered, text at bottom, gradient rainbow"
+
+rules:
+  - "底部不放文字"
+  - "核心元素居中"
+  - "科技感但不冰冷"
