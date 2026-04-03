@@ -134,11 +134,86 @@ def build_timeline_html(topic: dict[str, Any]) -> str:
 
 # ── 模板路由 ────────────────────────────────────────────────
 
+
+def build_promo_cover_html(topic: dict[str, Any]) -> str:
+    """构建推广类封面图的 HTML。"""
+    tpl = _load_template("promo_cover")
+
+    # 从 topic 数据中提取卖点
+    selling_points = topic.get("selling_points", [])
+    if not selling_points:
+        # 根据不同 style 自动提取卖点
+        # 用 original_style 获取原始风格（style 已被改为 promo_cover）
+        style = topic.get("original_style", topic.get("style", ""))
+        if style == "data_table":
+            data = topic.get("data_content", {})
+            rows = data.get("rows", [])
+            selling_points = [
+                f"📊 {data.get('table_title', '数据一览')}",
+                f"📋 涵盖 {len(rows)} 组核心数据",
+                "🎯 家长必看·一图掌握全部信息",
+            ]
+        elif style == "comparison":
+            cdata = topic.get("compare_data", {})
+            selling_points = [
+                f"⚖️ {cdata.get('left_title', 'A')} vs {cdata.get('right_title', 'B')} 全面对比",
+                f"📋 {len(cdata.get('items', []))} 个维度逐项分析",
+                "🎯 看完这张图就不纠结了",
+            ]
+        elif style == "timeline":
+            events = topic.get("timeline_data", [])
+            selling_points = [
+                f"📅 {len(events)} 个关键时间节点",
+                f"🗓️ 从{events[0]['month']}到{events[-1]['month']}全覆盖" if events else "📅 全年规划一图搞定",
+                "🎯 家长必收藏·考前反复查阅",
+            ]
+        elif style == "info_card":
+            points = topic.get("key_points", [])
+            selling_points = [
+                f"📋 {len(points)} 个核心知识点梳理",
+                "✅ 条理清晰·考前速查",
+                "🎯 收藏起来反复看",
+            ]
+        else:
+            selling_points = [
+                "📋 核心内容全梳理",
+                "✅ 一图看懂所有要点",
+                "🎯 家长必收藏",
+            ]
+
+    icons = ["📊", "📋", "🎯", "✅", "⭐", "💡"]
+    points_html = ""
+    for i, point in enumerate(selling_points):
+        icon = icons[i % len(icons)]
+        # 如果 point 自带 emoji 就不加
+        if point[0] in "📊📋🎯✅⭐💡📅🗓️⚖️":
+            text = point
+            icon_display = point[0]
+            text = point[1:].lstrip()
+        else:
+            icon_display = icon
+            text = point
+        points_html += f'''
+        <div class="point">
+            <div class="point-icon">{icon_display}</div>
+            <div class="point-text">{_esc(text)}</div>
+        </div>'''
+
+    tags_html = _render_tags(topic.get("tags", []))
+    return (
+        tpl.replace("{{TITLE}}", _esc(topic["title"]))
+        .replace("{{SUBTITLE}}", _esc(topic.get("subtitle", "")))
+        .replace("{{POINTS}}", points_html)
+        .replace("{{TAGS}}", tags_html)
+    )
+
+
 BUILDERS = {
     "data_table": build_data_table_html,
     "info_card": build_info_card_html,
     "comparison": build_comparison_html,
     "timeline": build_timeline_html,
+    "promo_cover": build_promo_cover_html,
 }
 
 
@@ -190,53 +265,31 @@ def render_topic_images(
     output_dir: Path | str,
     count: int = 3,
 ) -> list[Path]:
-    """为一个选题渲染多张图片（封面+内容+CTA）。
+    """为一个选题渲染多张图片。
 
-    目前策略：
-    - 图1：使用选题自带风格
-    - 图2：如果有 data_content 就用 data_table，否则用 info_card
-    - 图3：用 info_card 风格做总结CTA图
+    固定策略（确保 3 张图各不相同）：
+    - 图1（封面）：推广类封面（promo_cover）— 大标题+卖点+CTA
+    - 图2（内容）：选题自带的原生风格（data_table/comparison/timeline/info_card）
+    - 图3（引导）：CTA 关注引导卡（info_card 风格）
     """
     output_dir = Path(output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     images: list[Path] = []
 
-    # 图1：主图（封面）
-    img1 = render_image(topic, output_dir / "slide_1.png")
+    # ── 图1：推广封面 ──────────────────────────────────────────
+    cover_topic = dict(topic)
+    cover_topic["original_style"] = topic.get("style", "info_card")
+    cover_topic["style"] = "promo_cover"
+    img1 = render_image(cover_topic, output_dir / "slide_1.png")
     images.append(img1)
 
     if count >= 2:
-        # 图2：补充内容图
-        # 如果主图是 data_table，第2张用 info_card 补充关键点
-        # 如果主图不是 data_table 但有 data_content，用 data_table
-        topic2 = dict(topic)
-        if topic.get("style") == "data_table" and topic.get("key_points"):
-            topic2["style"] = "info_card"
-        elif topic.get("style") != "data_table" and topic.get("data_content"):
-            topic2["style"] = "data_table"
-        elif topic.get("style") == "comparison":
-            # 对比图第2张用 info_card 展示更多建议
-            topic2["style"] = "info_card"
-            if not topic2.get("key_points"):
-                topic2["key_points"] = [
-                    f"核心要点：{topic['title']}",
-                    "建议收藏本图方便随时查阅",
-                    "关注获取更多武汉本地升学干货",
-                    "有疑问可在评论区留言",
-                    "分享给需要的家长朋友",
-                ]
-        elif topic.get("style") == "timeline":
-            topic2["style"] = "info_card"
-            if not topic2.get("key_points"):
-                events = topic.get("timeline_data", [])
-                topic2["key_points"] = [f"{e['month']}：{e['title']}" for e in events[:6]]
-                topic2["subtitle"] = "关键节点速查"
-
-        img2 = render_image(topic2, output_dir / "slide_2.png")
+        # ── 图2：内容主图（原生风格） ───────────────────────────
+        img2 = render_image(topic, output_dir / "slide_2.png")
         images.append(img2)
 
     if count >= 3:
-        # 图3：CTA 总结图
+        # ── 图3：CTA 引导图 ────────────────────────────────────
         cta_topic = {
             "title": topic["title"],
             "subtitle": "收藏+关注·获取更多干货",
@@ -275,3 +328,4 @@ if __name__ == "__main__":
             print(f"  ✅ {img}")
 
     print("\n🎉 渲染测试完成")
+
