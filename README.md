@@ -207,6 +207,33 @@ browser_image:
   --dry-run
 ```
 
+### 5.2 武汉客户网页入口（第一期 MVP）
+
+第一期网页入口采用 `FastAPI + Jinja2 + HTMX`，直接复用当前脚本和文件态状态机。
+
+启动：
+
+```bash
+.venv/bin/python web/app.py --host 127.0.0.1 --port 8047
+```
+
+启动后终端会打印两条链接：
+
+- `Ops link`
+- `Client link`
+
+用法：
+
+- 运营端从 `Ops link` 进入，看板里可以新建任务、开关素材闸门、推进阶段
+- 客户端从 `Client link` 进入，可以查看任务、发起新任务、提交修改请求
+
+第一期定位：
+
+- 单客户：只支持 `wuhan-tutoring`
+- 网页做运营主控
+- Feishu 继续承担通知和审核卡通道
+- 底层生成链路继续复用现有脚本，不做重写
+
 ### 6. 安装为本地 OpenClaw skill
 
 脚本会在 `~/.openclaw/skills/edu-media-openclaw` 下生成一个本地 wrapper skill，

@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title or "武汉教培 Workflow" }}</title>
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+</head>
+<body>
+  <header class="shell-header">
+    <div>
+      <div class="eyebrow">Wuhan Tutoring Workflow</div>
+      <h1>{{ title or "武汉教培 Workflow" }}</h1>
+    </div>
+    <nav class="shell-nav">
+      <a href="/ops">运营端</a>
+      <a href="/client">客户端</a>
+      <a href="/logout">退出</a>
+    </nav>
+  </header>
+
+  {% if flash %}
+  <section class="flash">{{ flash }}</section>
+  {% endif %}
+
+  <main class="shell-main">
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

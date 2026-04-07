@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="layout detail-grid">
+  <section class="panel">
+    <div class="section-head">
+      <h2>{{ task.title }}</h2>
+      <p class="muted">当前阶段：{{ task.current_state }} ｜ 状态：{{ task.status }}</p>
+    </div>
+
+    <div class="kv">
+      <div><span>主题</span><strong>{{ task.topic }}</strong></div>
+      <div><span>受众</span><strong>{{ task.audience }}</strong></div>
+      <div><span>素材闸门</span><strong>{{ "ready" if task.materials_ready else "blocked" }}</strong></div>
+      <div><span>审核卡</span><strong>{{ task.review_message_id or "无" }}</strong></div>
+      <div><span>输出目录</span><strong>{{ task.session_output_dir or "未生成" }}</strong></div>
+    </div>
+
+    {% if latest_job %}
+    <div class="subpanel">
+      <h3>最近作业</h3>
+      <p><strong>{{ latest_job.action }}</strong> ｜ {{ latest_job.status }}</p>
+      {% if latest_job.error %}
+      <pre class="log">{{ latest_job.error }}</pre>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% if task.confirmed %}
+    <div class="subpanel">
+      <h3>已确认内容</h3>
+      <pre class="log">{{ task.confirmed | tojson(indent=2) }}</pre>
+    </div>
+    {% endif %}
+
+    {% if task.drafts %}
+    <div class="subpanel">
+      <h3>当前草稿</h3>
+      <pre class="log">{{ task.drafts | tojson(indent=2) }}</pre>
+    </div>
+    {% endif %}
+  </section>
+
+  <section class="panel">
+    <div class="section-head">
+      <h2>操作</h2>
+      <p class="muted">第一期用显式按钮驱动阶段动作，不做隐式自动推进。</p>
+    </div>
+
+    <div class="action-grid">
+      <form method="post" action="/tasks/{{ task.task_id }}/actions/generate-topic"><button type="submit">生成选题</button></form>
+      <form method="post" action="/tasks/{{ task.task_id }}/actions/generate-cover"><button type="submit">生成封面</button></form>
+      <form method="post" action="/tasks/{{ task.task_id }}/actions/generate-graphics"><button type="submit">生成配图</button></form>
+      <form method="post" action="/tasks/{{ task.task_id }}/actions/confirm-current"><button type="submit">确认当前阶段</button></form>
+      <form method="post" action="/tasks/{{ task.task_id }}/actions/sync"><button type="submit">同步状态</button></form>
+    </div>
+
+    {% if task.drafts and task.drafts.topics %}
+    <div class="subpanel">
+      <h3>选择选题</h3>
+      {% for topic in task.drafts.topics %}
+      <form method="post" action="/tasks/{{ task.task_id }}/actions/select-topic" class="topic-option">
+        <input type="hidden" name="topic_title" value="{{ topic.title }}">
+        <div>
+          <strong>{{ topic.title }}</strong>
+          <p class="muted">{{ topic.angle }}</p>
+        </div>
+        <button type="submit">选择</button>
+      </form>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="subpanel">
+      <h3>客户修改请求</h3>
+      <form method="post" action="/tasks/{{ task.task_id }}/actions/request-change" class="stack">
+        <textarea name="message" rows="5" placeholder="写下修改意见或重跑请求"></textarea>
+        <button type="submit">提交修改请求</button>
+      </form>
+      {% if task.client_change_request %}
+      <p class="muted">最近请求：{{ task.client_change_request }}</p>
+      {% endif %}
+    </div>
+  </section>
+</section>
+{% endblock %}

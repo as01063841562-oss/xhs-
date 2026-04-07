@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="layout two-col">
+  <section class="panel">
+    <div class="section-head">
+      <h2>发起新任务</h2>
+      <p class="muted">客户直接提交需求，进入武汉专属小红书工作流。</p>
+    </div>
+    <form method="post" action="/tasks" class="stack">
+      <input type="hidden" name="role" value="client">
+      <label>任务标题<input name="title" required></label>
+      <label>主题 / 需求<input name="topic" required></label>
+      <label>目标受众<input name="audience" value="武汉家长"></label>
+      <button type="submit">提交任务</button>
+    </form>
+  </section>
+
+  <section class="panel">
+    <div class="section-head">
+      <h2>我的任务</h2>
+      <p class="muted">查看当前阶段产物，并提交确认或修改请求。</p>
+    </div>
+    <div class="task-list">
+      {% for task in tasks %}
+      <a class="task-card" href="/tasks/{{ task.task_id }}">
+        <div class="task-top">
+          <strong>{{ task.title }}</strong>
+          <span class="pill">{{ task.current_state }}</span>
+        </div>
+        <div class="task-meta">
+          <span>状态: {{ task.status }}</span>
+          <span>审核卡: {{ task.review_message_id or "无" }}</span>
+        </div>
+      </a>
+      {% else %}
+      <p class="muted">还没有任务。</p>
+      {% endfor %}
+    </div>
+  </section>
+</section>
+{% endblock %}
