@@ -31,10 +31,20 @@ TOPIC_STATE = "state_0_topic"
 COPYWRITING_STATE = "state_1_copywriting"
 COVER_STATE = "state_2_cover"
 GRAPHIC_STATE = "state_3_graphics"
+DONE_STATE = "state_4_done"
 DEFAULT_AUDIENCE = "武汉家长"
 _MINIMAL_PNG = bytes.fromhex(
     "89504E470D0A1A0A0000000D49484452000000010000000108060000001F15C489"
     "0000000D49444154789C63F8FFFFFF7F0009FB03FD2A86E38A0000000049454E44AE426082"
+)
+_CONFIRMATION_HINTS = (
+    "可以",
+    "继续",
+    "确认",
+    "通过",
+    "就这个",
+    "就这样",
+    "没问题",
 )
 
 
@@ -74,12 +84,27 @@ def build_state_summary(state: dict[str, Any]) -> str:
 
 def classify_message(message: str, state: dict[str, Any]) -> dict[str, Any]:
     text = (message or "").strip()
+    current_state = state.get("current_state", "")
 
     if any(hint in text for hint in _FEEDBACK_HINTS):
         return {
             "intent": "feedback_request",
-            "feedback": parse_feedback(text, state.get("current_state", "")),
+            "feedback": parse_feedback(text, current_state),
         }
+
+    if (
+        current_state == COVER_STATE
+        and "封面图" in text
+        and any(hint in text for hint in _CONFIRMATION_HINTS)
+    ):
+        return {"intent": "selection_or_confirmation"}
+
+    if (
+        current_state == GRAPHIC_STATE
+        and "配图" in text
+        and any(hint in text for hint in _CONFIRMATION_HINTS)
+    ):
+        return {"intent": "selection_or_confirmation"}
 
     if "封面图" in text or "生成封面图" in text:
         return {"intent": "cover_request"}
@@ -308,6 +333,23 @@ def confirm_copywriting(state: dict[str, Any]) -> dict[str, Any]:
     return state
 
 
+def confirm_cover(state: dict[str, Any]) -> dict[str, Any]:
+    drafts = state.setdefault("drafts", {})
+    confirmed = state.setdefault("confirmed", {})
+    confirmed["cover"] = list(drafts.get("cover_images") or [])
+    drafts["graphic_images"] = []
+    state["current_state"] = GRAPHIC_STATE
+    return state
+
+
+def confirm_graphics(state: dict[str, Any]) -> dict[str, Any]:
+    drafts = state.setdefault("drafts", {})
+    confirmed = state.setdefault("confirmed", {})
+    confirmed["graphics"] = list(drafts.get("graphic_images") or [])
+    state["current_state"] = DONE_STATE
+    return state
+
+
 def route_message(
     client_slug: str,
     open_id: str,
@@ -390,6 +432,24 @@ def route_message(
         confirm_copywriting(state)
         result["action"] = "confirm_copywriting"
         result["confirmed_copywriting"] = state.get("confirmed", {}).get("copywriting")
+        state_changed = True
+    elif (
+        classified["intent"] == "selection_or_confirmation"
+        and state.get("current_state") == COVER_STATE
+        and state.get("drafts", {}).get("cover_images")
+    ):
+        confirm_cover(state)
+        result["action"] = "confirm_cover"
+        result["confirmed_cover"] = state.get("confirmed", {}).get("cover")
+        state_changed = True
+    elif (
+        classified["intent"] == "selection_or_confirmation"
+        and state.get("current_state") == GRAPHIC_STATE
+        and state.get("drafts", {}).get("graphic_images")
+    ):
+        confirm_graphics(state)
+        result["action"] = "confirm_graphics"
+        result["confirmed_graphics"] = state.get("confirmed", {}).get("graphics")
         state_changed = True
     elif (
         classified["intent"] == "cover_request"

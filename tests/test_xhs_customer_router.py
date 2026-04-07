@@ -86,6 +86,23 @@ class XhsCustomerRouterTest(unittest.TestCase):
             "selection_or_confirmation",
         )
 
+    def test_classify_message_treats_stage_approval_as_confirmation(self) -> None:
+        cover_state = {
+            "current_state": "state_2_cover",
+        }
+        graphic_state = {
+            "current_state": "state_3_graphics",
+        }
+
+        self.assertEqual(
+            classify_message("这张封面图可以，继续", cover_state)["intent"],
+            "selection_or_confirmation",
+        )
+        self.assertEqual(
+            classify_message("这组配图可以，继续", graphic_state)["intent"],
+            "selection_or_confirmation",
+        )
+
     def test_guard_materials_ready_blocks_material_requests(self) -> None:
         for intent in ("topic_request", "selection_or_confirmation", "cover_request", "graphic_request"):
             result = guard_materials_ready(self.state, intent)
@@ -390,6 +407,78 @@ class XhsCustomerRouterTest(unittest.TestCase):
         self.assertEqual(result["action"], "confirm_copywriting")
         self.assertEqual(state["current_state"], "state_2_cover")
         self.assertEqual(state["confirmed"]["copywriting"], {"cover_title": "标题", "variants": [{"title": "版本1"}]})
+        self.assertTrue(result["state_changed"])
+        mock_save.assert_not_called()
+
+    def test_route_message_confirms_cover_and_moves_to_graphics(self) -> None:
+        state = {
+            "materials_ready": True,
+            "current_state": "state_2_cover",
+            "confirmed": {
+                "topic": "初三数学必考：二次函数题型全梳理",
+                "title": None,
+                "copywriting": {"cover_title": "标题", "variants": [{"title": "版本1"}]},
+                "cover": None,
+                "graphics": None,
+            },
+            "drafts": {
+                "topics": [],
+                "copywriting": {"cover_title": "标题", "variants": [{"title": "版本1"}]},
+                "cover_images": ["cover1.png", "cover2.png"],
+                "graphic_images": [],
+            },
+        }
+
+        with patch("xhs_customer_router.load_state", return_value=state), patch(
+            "xhs_customer_router.save_state"
+        ) as mock_save:
+            result = route_message(
+                client_slug="wuhan-tutoring",
+                open_id="ou_test",
+                message="这张封面图可以，继续",
+                dry_run=True,
+            )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["action"], "confirm_cover")
+        self.assertEqual(state["current_state"], "state_3_graphics")
+        self.assertEqual(state["confirmed"]["cover"], ["cover1.png", "cover2.png"])
+        self.assertTrue(result["state_changed"])
+        mock_save.assert_not_called()
+
+    def test_route_message_confirms_graphics_and_moves_to_done(self) -> None:
+        state = {
+            "materials_ready": True,
+            "current_state": "state_3_graphics",
+            "confirmed": {
+                "topic": "初三数学必考：二次函数题型全梳理",
+                "title": None,
+                "copywriting": {"cover_title": "标题", "variants": [{"title": "版本1"}]},
+                "cover": ["cover1.png"],
+                "graphics": None,
+            },
+            "drafts": {
+                "topics": [],
+                "copywriting": {"cover_title": "标题", "variants": [{"title": "版本1"}]},
+                "cover_images": ["cover1.png"],
+                "graphic_images": ["g1.png", "g2.png"],
+            },
+        }
+
+        with patch("xhs_customer_router.load_state", return_value=state), patch(
+            "xhs_customer_router.save_state"
+        ) as mock_save:
+            result = route_message(
+                client_slug="wuhan-tutoring",
+                open_id="ou_test",
+                message="这组配图可以，继续",
+                dry_run=True,
+            )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["action"], "confirm_graphics")
+        self.assertEqual(state["current_state"], "state_4_done")
+        self.assertEqual(state["confirmed"]["graphics"], ["g1.png", "g2.png"])
         self.assertTrue(result["state_changed"])
         mock_save.assert_not_called()
 
