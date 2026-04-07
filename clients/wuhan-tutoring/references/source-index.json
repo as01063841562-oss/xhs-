@@ -1,11 +1,117 @@
 {
   "configured_profiles": [
-    "https://www.xiaohongshu.com/user/profile/684676fd000000001e03fa34",
-    "https://www.xiaohongshu.com/user/profile/6901fc020000000037003fed",
-    "https://www.xiaohongshu.com/user/profile/6865ebf8000000001e004b42"
+    "https://www.xiaohongshu.com/user/profile/684676fd000000001e03fa34?xsec_token=YB5b6JsJaklXj_rHdL_hFvcc04sB6FGGUA7NQFjEcee-g=&xsec_source=app_share&xhsshare=WeixinSession&appuid=63759286000000001f0148cc&apptime=1775469291&share_id=6a017e3a07dc4c05b783a187e8aeb706&wechatWid=4fd99ddfaf3cbf618288d14791787caf&wechatOrigin=menu",
+    "https://www.xiaohongshu.com/user/profile/6901fc020000000037003fed?xsec_token=YBY9Fep2P0pMcp9aC1hSSi0ja53eM5eu7tIh1NnjwinhU=&xsec_source=app_share&xhsshare=WeixinSession&appuid=63759286000000001f0148cc&apptime=1775469306&share_id=7ca5dac0db184c169c9c9b678b3f7a0e&wechatWid=4fd99ddfaf3cbf618288d14791787caf&wechatOrigin=menu",
+    "https://www.xiaohongshu.com/user/profile/6865ebf8000000001e004b42?xsec_token=YBrbXt3crDZQ2JOKleFWq4frB7O766A5r7QaQ08nq7z8Y=&xsec_source=app_share&xhsshare=WeixinSession&appuid=63759286000000001f0148cc&apptime=1775469313&share_id=4ef803455ad64af1a40d1903dfa99925&wechatWid=4fd99ddfaf3cbf618288d14791787caf&wechatOrigin=menu"
   ],
-  "profiles": [],
-  "notes": [],
-  "fetch_state": "not_fetched",
-  "updated_at": null
+  "profiles": [
+    {
+      "source_profile_url": "https://www.xiaohongshu.com/user/profile/684676fd000000001e03fa34?xsec_token=YB5b6JsJaklXj_rHdL_hFvcc04sB6FGGUA7NQFjEcee-g=&xsec_source=app_share&xhsshare=WeixinSession&appuid=63759286000000001f0148cc&apptime=1775469291&share_id=6a017e3a07dc4c05b783a187e8aeb706&wechatWid=4fd99ddfaf3cbf618288d14791787caf&wechatOrigin=menu",
+      "resolved_profile_url": "https://www.xiaohongshu.com/user/profile/684676fd000000001e03fa34?xsec_token=YB5b6JsJaklXj_rHdL_hFvcc04sB6FGGUA7NQFjEcee-g=&xsec_source=app_share&xhsshare=WeixinSession&appuid=63759286000000001f0148cc&apptime=1775469291&share_id=6a017e3a07dc4c05b783a187e8aeb706&wechatWid=4fd99ddfaf3cbf618288d14791787caf&wechatOrigin=menu",
+      "author": "龙门尚学教育",
+      "fetch_state": "partial",
+      "collected_via": "chrome_cdp_profile_cards",
+      "notes": [
+        {
+          "title": "置顶",
+          "author": "龙门尚学教育",
+          "source_profile_url": "https://www.xiaohongshu.com/user/profile/684676fd000000001e03fa34?xsec_token=YB5b6JsJaklXj_rHdL_hFvcc04sB6FGGUA7NQFjEcee-g=&xsec_source=app_share&xhsshare=WeixinSession&appuid=63759286000000001f0148cc&apptime=1775469291&share_id=6a017e3a07dc4c05b783a187e8aeb706&wechatWid=4fd99ddfaf3cbf618288d14791787caf&wechatOrigin=menu",
+          "resolved_profile_url": "https://www.xiaohongshu.com/user/profile/684676fd000000001e03fa34?xsec_token=YB5b6JsJaklXj_rHdL_hFvcc04sB6FGGUA7NQFjEcee-g=&xsec_source=app_share&xhsshare=WeixinSession&appuid=63759286000000001f0148cc&apptime=1775469291&share_id=6a017e3a07dc4c05b783a187e8aeb706&wechatWid=4fd99ddfaf3cbf618288d14791787caf&wechatOrigin=menu",
+          "collected_via": "chrome_cdp_profile_cards",
+          "access_level": "profile_card",
+          "note_url": null,
+          "image_url": "https://sns-webpic-qc.xhscdn.com/202604080143/0070585da337a1122c495b2748904fc1/spectrum/1040g0k031lbng2kal0005q26erunnuhkfht973g!nc_n_webp_mw_1",
+          "collection_note": "full body was not accessible without login; this snapshot records only the visible profile-card metadata and cover image reference."
+        }
+      ]
+    },
+    {
+      "source_profile_url": "https://www.xiaohongshu.com/user/profile/6901fc020000000037003fed?xsec_token=YBY9Fep2P0pMcp9aC1hSSi0ja53eM5eu7tIh1NnjwinhU=&xsec_source=app_share&xhsshare=WeixinSession&appuid=63759286000000001f0148cc&apptime=1775469306&share_id=7ca5dac0db184c169c9c9b678b3f7a0e&wechatWid=4fd99ddfaf3cbf618288d14791787caf&wechatOrigin=menu",
+      "resolved_profile_url": "https://www.xiaohongshu.com/user/profile/6901fc020000000037003fed?xsec_token=YBY9Fep2P0pMcp9aC1hSSi0ja53eM5eu7tIh1NnjwinhU=&xsec_source=app_share&xhsshare=WeixinSession&appuid=63759286000000001f0148cc&apptime=1775469306&share_id=7ca5dac0db184c169c9c9b678b3f7a0e&wechatWid=4fd99ddfaf3cbf618288d14791787caf&wechatOrigin=menu",
+      "author": "武汉龙尚门学",
+      "fetch_state": "partial",
+      "collected_via": "chrome_cdp_profile_cards",
+      "notes": [
+        {
+          "title": "总是理不顺？武汉龙门这家值得先了解🔥",
+          "author": "武汉龙尚门学",
+          "source_profile_url": "https://www.xiaohongshu.com/user/profile/6901fc020000000037003fed?xsec_token=YBY9Fep2P0pMcp9aC1hSSi0ja53eM5eu7tIh1NnjwinhU=&xsec_source=app_share&xhsshare=WeixinSession&appuid=63759286000000001f0148cc&apptime=1775469306&share_id=7ca5dac0db184c169c9c9b678b3f7a0e&wechatWid=4fd99ddfaf3cbf618288d14791787caf&wechatOrigin=menu",
+          "resolved_profile_url": "https://www.xiaohongshu.com/user/profile/6901fc020000000037003fed?xsec_token=YBY9Fep2P0pMcp9aC1hSSi0ja53eM5eu7tIh1NnjwinhU=&xsec_source=app_share&xhsshare=WeixinSession&appuid=63759286000000001f0148cc&apptime=1775469306&share_id=7ca5dac0db184c169c9c9b678b3f7a0e&wechatWid=4fd99ddfaf3cbf618288d14791787caf&wechatOrigin=menu",
+          "collected_via": "chrome_cdp_profile_cards",
+          "access_level": "profile_card",
+          "note_url": null,
+          "image_url": "https://sns-webpic-qc.xhscdn.com/202604080143/8f4b2d287e5fd5a6dc8eb82cd0c0de42/spectrum/1040g0k031ulbc0931m005q81vg1dofvd27chcs0!nc_n_webp_mw_1",
+          "collection_note": "full body was not accessible without login; this snapshot records only the visible profile-card metadata and cover image reference."
+        }
+      ]
+    },
+    {
+      "source_profile_url": "https://www.xiaohongshu.com/user/profile/6865ebf8000000001e004b42?xsec_token=YBrbXt3crDZQ2JOKleFWq4frB7O766A5r7QaQ08nq7z8Y=&xsec_source=app_share&xhsshare=WeixinSession&appuid=63759286000000001f0148cc&apptime=1775469313&share_id=4ef803455ad64af1a40d1903dfa99925&wechatWid=4fd99ddfaf3cbf618288d14791787caf&wechatOrigin=menu",
+      "resolved_profile_url": "https://www.xiaohongshu.com/user/profile/6865ebf8000000001e004b42?xsec_token=YBrbXt3crDZQ2JOKleFWq4frB7O766A5r7QaQ08nq7z8Y=&xsec_source=app_share&xhsshare=WeixinSession&appuid=63759286000000001f0148cc&apptime=1775469313&share_id=4ef803455ad64af1a40d1903dfa99925&wechatWid=4fd99ddfaf3cbf618288d14791787caf&wechatOrigin=menu",
+      "author": "龙尚门学规划",
+      "fetch_state": "partial",
+      "collected_via": "chrome_cdp_profile_cards",
+      "notes": [
+        {
+          "title": "想找武汉靠谱的陪伴式规划服务？",
+          "author": "龙尚门学规划",
+          "source_profile_url": "https://www.xiaohongshu.com/user/profile/6865ebf8000000001e004b42?xsec_token=YBrbXt3crDZQ2JOKleFWq4frB7O766A5r7QaQ08nq7z8Y=&xsec_source=app_share&xhsshare=WeixinSession&appuid=63759286000000001f0148cc&apptime=1775469313&share_id=4ef803455ad64af1a40d1903dfa99925&wechatWid=4fd99ddfaf3cbf618288d14791787caf&wechatOrigin=menu",
+          "resolved_profile_url": "https://www.xiaohongshu.com/user/profile/6865ebf8000000001e004b42?xsec_token=YBrbXt3crDZQ2JOKleFWq4frB7O766A5r7QaQ08nq7z8Y=&xsec_source=app_share&xhsshare=WeixinSession&appuid=63759286000000001f0148cc&apptime=1775469313&share_id=4ef803455ad64af1a40d1903dfa99925&wechatWid=4fd99ddfaf3cbf618288d14791787caf&wechatOrigin=menu",
+          "collected_via": "chrome_cdp_profile_cards",
+          "access_level": "profile_card",
+          "note_url": null,
+          "image_url": "https://sns-webpic-qc.xhscdn.com/202604080143/582d24f2d72e13bca2e4ef6b5b7ec9e6/spectrum/1040g34o31uld96c6jm005q35tfs7giq2nl2hau8!nc_n_webp_mw_1",
+          "collection_note": "full body was not accessible without login; this snapshot records only the visible profile-card metadata and cover image reference."
+        }
+      ]
+    }
+  ],
+  "notes": [
+    {
+      "title": "置顶",
+      "author": "龙门尚学教育",
+      "source_profile_url": "https://www.xiaohongshu.com/user/profile/684676fd000000001e03fa34?xsec_token=YB5b6JsJaklXj_rHdL_hFvcc04sB6FGGUA7NQFjEcee-g=&xsec_source=app_share&xhsshare=WeixinSession&appuid=63759286000000001f0148cc&apptime=1775469291&share_id=6a017e3a07dc4c05b783a187e8aeb706&wechatWid=4fd99ddfaf3cbf618288d14791787caf&wechatOrigin=menu",
+      "resolved_profile_url": "https://www.xiaohongshu.com/user/profile/684676fd000000001e03fa34?xsec_token=YB5b6JsJaklXj_rHdL_hFvcc04sB6FGGUA7NQFjEcee-g=&xsec_source=app_share&xhsshare=WeixinSession&appuid=63759286000000001f0148cc&apptime=1775469291&share_id=6a017e3a07dc4c05b783a187e8aeb706&wechatWid=4fd99ddfaf3cbf618288d14791787caf&wechatOrigin=menu",
+      "collected_via": "chrome_cdp_profile_cards",
+      "access_level": "profile_card",
+      "note_url": null,
+      "image_url": "https://sns-webpic-qc.xhscdn.com/202604080143/0070585da337a1122c495b2748904fc1/spectrum/1040g0k031lbng2kal0005q26erunnuhkfht973g!nc_n_webp_mw_1",
+      "collection_note": "full body was not accessible without login; this snapshot records only the visible profile-card metadata and cover image reference.",
+      "article_snapshot_path": "clients/wuhan-tutoring/references/article/684676fd000000001e03fa34-01-置顶.md",
+      "image_path": "clients/wuhan-tutoring/references/images/684676fd000000001e03fa34-01-置顶.jpg",
+      "image_downloaded": true
+    },
+    {
+      "title": "总是理不顺？武汉龙门这家值得先了解🔥",
+      "author": "武汉龙尚门学",
+      "source_profile_url": "https://www.xiaohongshu.com/user/profile/6901fc020000000037003fed?xsec_token=YBY9Fep2P0pMcp9aC1hSSi0ja53eM5eu7tIh1NnjwinhU=&xsec_source=app_share&xhsshare=WeixinSession&appuid=63759286000000001f0148cc&apptime=1775469306&share_id=7ca5dac0db184c169c9c9b678b3f7a0e&wechatWid=4fd99ddfaf3cbf618288d14791787caf&wechatOrigin=menu",
+      "resolved_profile_url": "https://www.xiaohongshu.com/user/profile/6901fc020000000037003fed?xsec_token=YBY9Fep2P0pMcp9aC1hSSi0ja53eM5eu7tIh1NnjwinhU=&xsec_source=app_share&xhsshare=WeixinSession&appuid=63759286000000001f0148cc&apptime=1775469306&share_id=7ca5dac0db184c169c9c9b678b3f7a0e&wechatWid=4fd99ddfaf3cbf618288d14791787caf&wechatOrigin=menu",
+      "collected_via": "chrome_cdp_profile_cards",
+      "access_level": "profile_card",
+      "note_url": null,
+      "image_url": "https://sns-webpic-qc.xhscdn.com/202604080143/8f4b2d287e5fd5a6dc8eb82cd0c0de42/spectrum/1040g0k031ulbc0931m005q81vg1dofvd27chcs0!nc_n_webp_mw_1",
+      "collection_note": "full body was not accessible without login; this snapshot records only the visible profile-card metadata and cover image reference.",
+      "article_snapshot_path": "clients/wuhan-tutoring/references/article/6901fc020000000037003fed-01-总是理不顺-武汉龙门这家值得先了解.md",
+      "image_path": "clients/wuhan-tutoring/references/images/6901fc020000000037003fed-01-总是理不顺-武汉龙门这家值得先了解.jpg",
+      "image_downloaded": true
+    },
+    {
+      "title": "想找武汉靠谱的陪伴式规划服务？",
+      "author": "龙尚门学规划",
+      "source_profile_url": "https://www.xiaohongshu.com/user/profile/6865ebf8000000001e004b42?xsec_token=YBrbXt3crDZQ2JOKleFWq4frB7O766A5r7QaQ08nq7z8Y=&xsec_source=app_share&xhsshare=WeixinSession&appuid=63759286000000001f0148cc&apptime=1775469313&share_id=4ef803455ad64af1a40d1903dfa99925&wechatWid=4fd99ddfaf3cbf618288d14791787caf&wechatOrigin=menu",
+      "resolved_profile_url": "https://www.xiaohongshu.com/user/profile/6865ebf8000000001e004b42?xsec_token=YBrbXt3crDZQ2JOKleFWq4frB7O766A5r7QaQ08nq7z8Y=&xsec_source=app_share&xhsshare=WeixinSession&appuid=63759286000000001f0148cc&apptime=1775469313&share_id=4ef803455ad64af1a40d1903dfa99925&wechatWid=4fd99ddfaf3cbf618288d14791787caf&wechatOrigin=menu",
+      "collected_via": "chrome_cdp_profile_cards",
+      "access_level": "profile_card",
+      "note_url": null,
+      "image_url": "https://sns-webpic-qc.xhscdn.com/202604080143/582d24f2d72e13bca2e4ef6b5b7ec9e6/spectrum/1040g34o31uld96c6jm005q35tfs7giq2nl2hau8!nc_n_webp_mw_1",
+      "collection_note": "full body was not accessible without login; this snapshot records only the visible profile-card metadata and cover image reference.",
+      "article_snapshot_path": "clients/wuhan-tutoring/references/article/6865ebf8000000001e004b42-01-想找武汉靠谱的陪伴式规划服务.md",
+      "image_path": "clients/wuhan-tutoring/references/images/6865ebf8000000001e004b42-01-想找武汉靠谱的陪伴式规划服务.jpg",
+      "image_downloaded": true
+    }
+  ],
+  "fetch_state": "partial",
+  "updated_at": "20260407-104331",
+  "client": "wuhan-tutoring",
+  "dry_run": false
 }

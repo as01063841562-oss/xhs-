@@ -12,26 +12,63 @@ import shutil
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
-TARGET = Path(os.path.expanduser("~/.openclaw/skills/edu-media-openclaw"))
+SKILL_TARGET_ROOT = Path(os.path.expanduser("~/.openclaw/skills"))
+PROJECT_TARGET = SKILL_TARGET_ROOT / "edu-media-openclaw"
+WUHAN_SKILL_SOURCE_ROOT = ROOT_DIR / "skills" / "xhs-edu-wuhan"
+WUHAN_SKILL_NAMES = [
+    "xhs-router",
+    "xhs-topic",
+    "xhs-writer",
+    "xhs-image-cover",
+    "xhs-image-graphic",
+    "xhs-feedback",
+]
+
+
+def _replace_tree(source_dir: Path, target_dir: Path) -> None:
+    if target_dir.exists() or target_dir.is_symlink():
+        if target_dir.is_symlink() or target_dir.is_file():
+            target_dir.unlink()
+        else:
+            shutil.rmtree(target_dir)
+    shutil.copytree(source_dir, target_dir)
+
+
+def install_project_wrapper() -> None:
+    if PROJECT_TARGET.exists() or PROJECT_TARGET.is_symlink():
+        if PROJECT_TARGET.is_symlink() or PROJECT_TARGET.is_file():
+            PROJECT_TARGET.unlink()
+        else:
+            shutil.rmtree(PROJECT_TARGET)
+
+    PROJECT_TARGET.mkdir(parents=True, exist_ok=True)
+
+    source_skill = ROOT_DIR / "SKILL.md"
+    target_skill = PROJECT_TARGET / "SKILL.md"
+    shutil.copy2(str(source_skill), str(target_skill))
+
+
+def install_wuhan_skills() -> list[Path]:
+    installed: list[Path] = []
+    SKILL_TARGET_ROOT.mkdir(parents=True, exist_ok=True)
+    for skill_name in WUHAN_SKILL_NAMES:
+        source_dir = WUHAN_SKILL_SOURCE_ROOT / skill_name
+        target_dir = SKILL_TARGET_ROOT / skill_name
+        _replace_tree(source_dir, target_dir)
+        installed.append(target_dir)
+    return installed
 
 
 def main() -> None:
-    # 清理旧安装
-    if TARGET.exists() or TARGET.is_symlink():
-        if TARGET.is_symlink() or TARGET.is_file():
-            TARGET.unlink()
-        else:
-            shutil.rmtree(TARGET)
+    install_project_wrapper()
+    installed_wuhan_skills = install_wuhan_skills()
 
-    TARGET.mkdir(parents=True, exist_ok=True)
-
-    # 直接复制项目中的 SKILL.md（已经包含完整触发指令和流程）
-    source_skill = ROOT_DIR / "SKILL.md"
-    target_skill = TARGET / "SKILL.md"
-    shutil.copy2(str(source_skill), str(target_skill))
-
-    print(f"✅ Skill 已安装到: {TARGET}")
-    print(f"   来源: {source_skill}")
+    print(f"✅ Skill 已安装到: {PROJECT_TARGET}")
+    print(f"   来源: {ROOT_DIR / 'SKILL.md'}")
+    print()
+    print("✅ 已同步武汉客户 workflow skills：")
+    for target_dir in installed_wuhan_skills:
+        print(f"   - {target_dir}")
     print()
     print("📱 现在可以在飞书 @市场智能助手 说：")
     print('   "帮我做一个小红书笔记，主题是春季穿搭"')
@@ -41,6 +78,8 @@ def main() -> None:
     print("   2. 通过 Gemini CLI / 网页自动化生成真实封面图")
     print("   3. 发送飞书初稿审核卡片")
     print("   4. 等你在卡片里点通过/修改/重写后再继续（修改会先打开说明卡）")
+    print()
+    print("🧭 武汉客户化 workflow 也可通过本地 skills 单独复用。")
 
 
 if __name__ == "__main__":

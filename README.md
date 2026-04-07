@@ -185,16 +185,44 @@ browser_image:
 .venv/bin/python scripts/smoke_test.py
 ```
 
+### 5.1 武汉教培客户 workflow 自检
+
+如果你只想验证武汉客户化路由，不必先走整条生成链路：
+
+```bash
+.venv/bin/python scripts/xhs_customer_router.py \
+  --client wuhan-tutoring \
+  --open-id ou_test_router \
+  --message "汇总" \
+  --dry-run
+```
+
+如果当前素材闸门还没打开，下面这条会返回 `materials_not_ready`，这是预期行为：
+
+```bash
+.venv/bin/python scripts/xhs_customer_router.py \
+  --client wuhan-tutoring \
+  --open-id ou_test_router \
+  --message "#选题 数学 二次函数" \
+  --dry-run
+```
+
 ### 6. 安装为本地 OpenClaw skill
 
 脚本会在 `~/.openclaw/skills/edu-media-openclaw` 下生成一个本地 wrapper skill，
-内部使用当前项目的绝对路径和虚拟环境 Python：
+并把武汉客户 workflow 的 6 个 source skill 同步到 `~/.openclaw/skills/`：
 
 ```bash
 .venv/bin/python scripts/install_skill.py
 ```
 
-安装后可在 OpenClaw 中直接引用本项目 skill。
+安装后可在 OpenClaw 中直接引用本项目 skill，也可以单独复用：
+- `xhs-router`
+- `xhs-topic`
+- `xhs-writer`
+- `xhs-image-cover`
+- `xhs-image-graphic`
+- `xhs-feedback`
 
 ## 关键文件
 

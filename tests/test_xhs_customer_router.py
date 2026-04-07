@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import unittest
 from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 import sys
 
@@ -9,7 +11,15 @@ SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
-from xhs_customer_router import build_state_summary, classify_message, guard_materials_ready
+from xhs_customer_router import (
+    build_state_summary,
+    classify_message,
+    confirm_copywriting,
+    generate_copywriting_draft,
+    generate_graphic_draft,
+    guard_materials_ready,
+    route_message,
+)
 
 
 class XhsCustomerRouterTest(unittest.TestCase):
@@ -89,6 +99,119 @@ class XhsCustomerRouterTest(unittest.TestCase):
 
         self.assertTrue(result["allowed"])
         self.assertEqual(result["intent"], "cover_request")
+
+    def test_generate_copywriting_draft_stores_payload_in_state(self) -> None:
+        state = {
+            "drafts": {"copywriting": None},
+        }
+        payload = {"cover_title": "标题", "variants": [{"title": "版本1"}]}
+
+        with patch("xhs_customer_router.generate_xhs_payload", return_value=payload) as mock_generate:
+            result = generate_copywriting_draft(
+                topic="初三数学二次函数",
+                audience="武汉家长",
+                config={},
+                state=state,
+                dry_run=True,
+            )
+
+        self.assertEqual(result, payload)
+        self.assertEqual(state["drafts"]["copywriting"], payload)
+        mock_generate.assert_called_once()
+
+    def test_confirm_copywriting_locks_copywriting_and_moves_to_cover(self) -> None:
+        state = {
+            "current_state": "state_1_copywriting",
+            "confirmed": {
+                "topic": "初三数学二次函数",
+                "title": None,
+                "copywriting": None,
+                "cover": None,
+                "graphics": None,
+            },
+            "drafts": {
+                "copywriting": {"cover_title": "标题", "variants": []},
+                "cover_images": ["old-cover.png"],
+                "graphic_images": ["old-graphic.png"],
+            },
+        }
+
+        confirm_copywriting(state)
+
+        self.assertEqual(state["current_state"], "state_2_cover")
+        self.assertEqual(state["confirmed"]["copywriting"], {"cover_title": "标题", "variants": []})
+        self.assertEqual(state["drafts"]["cover_images"], [])
+        self.assertEqual(state["drafts"]["graphic_images"], [])
+
+    def test_generate_graphic_draft_creates_dedicated_graphics_dir(self) -> None:
+        state = {"drafts": {"graphic_images": []}}
+        payload = {"cover_title": "标题"}
+
+        with TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            generated = generate_graphic_draft(payload, state, run_dir)
+
+        self.assertEqual(len(generated), 3)
+        self.assertTrue(all(path.endswith(".png") for path in generated))
+        self.assertEqual(state["drafts"]["graphic_images"], generated)
+        self.assertTrue(all("graphics/graphic_" in path for path in generated))
+
+    def test_route_message_returns_summary_without_mutating_state(self) -> None:
+        state = {
+            "materials_ready": False,
+            "current_state": "state_1_copywriting",
+            "confirmed": {
+                "topic": "初三数学二次函数",
+                "title": None,
+                "copywriting": None,
+                "cover": None,
+                "graphics": None,
+            },
+        }
+
+        with patch("xhs_customer_router.load_state", return_value=state), patch(
+            "xhs_customer_router.save_state"
+        ) as mock_save:
+            result = route_message(
+                client_slug="wuhan-tutoring",
+                open_id="ou_test",
+                message="汇总",
+                dry_run=True,
+            )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["operation"], "summary")
+        self.assertIn("当前会话摘要", result["response"])
+        self.assertFalse(result["state_changed"])
+        mock_save.assert_not_called()
+
+    def test_route_message_blocks_topic_request_when_materials_not_ready(self) -> None:
+        state = {
+            "materials_ready": False,
+            "current_state": "state_0_topic",
+            "confirmed": {
+                "topic": None,
+                "title": None,
+                "copywriting": None,
+                "cover": None,
+                "graphics": None,
+            },
+        }
+
+        with patch("xhs_customer_router.load_state", return_value=state), patch(
+            "xhs_customer_router.save_state"
+        ) as mock_save:
+            result = route_message(
+                client_slug="wuhan-tutoring",
+                open_id="ou_test",
+                message="#选题 数学 二次函数",
+                dry_run=True,
+            )
+
+        self.assertEqual(result["status"], "blocked")
+        self.assertEqual(result["reason"], "materials_not_ready")
+        self.assertFalse(result["state_changed"])
+        mock_save.assert_not_called()
 
 
 if __name__ == "__main__":
