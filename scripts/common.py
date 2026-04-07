@@ -14,6 +14,7 @@ from typing import Any
 import yaml
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
+CLIENTS_DIR = ROOT_DIR / "clients"
 CONFIG_DIR = ROOT_DIR / "config"
 DOCS_DIR = ROOT_DIR / "docs"
 LOGS_DIR = ROOT_DIR / "logs"
@@ -37,6 +38,22 @@ PLACEHOLDER_MARKERS = {
 def ensure_dir(path: Path) -> Path:
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+
+def get_client_root(client_slug: str) -> Path:
+    return CLIENTS_DIR / client_slug
+
+
+def get_client_workflow_path(client_slug: str) -> Path:
+    return get_client_root(client_slug) / "config" / "workflow.yaml"
+
+
+def get_client_state_dir(client_slug: str) -> Path:
+    return ensure_dir(get_client_root(client_slug) / "state" / "feishu_dm")
+
+
+def get_client_session_dir(client_slug: str) -> Path:
+    return ensure_dir(get_client_root(client_slug) / "output" / "sessions")
 
 
 def load_yaml_file(path: Path) -> dict[str, Any]:
