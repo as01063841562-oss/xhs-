@@ -50,15 +50,28 @@ def state_path(client_slug: str, open_id: str) -> Path:
     return _state_file_path(client_slug, open_id)
 
 
+def materials_gate_path(client_slug: str) -> Path:
+    return common.get_client_root(client_slug) / "state" / "materials_gate.json"
+
+
+def load_materials_ready(client_slug: str) -> bool | None:
+    data = common.load_json_file(materials_gate_path(client_slug))
+    if not isinstance(data, dict) or "materials_ready" not in data:
+        return None
+    return bool(data.get("materials_ready"))
+
+
 def _normalize_state(state: dict[str, Any]) -> dict[str, Any]:
     return common.deep_merge(default_state(), state)
 
 
 def load_state(client_slug: str, open_id: str) -> dict[str, Any]:
     data = common.load_json_file(_state_file_path(client_slug, open_id))
-    if not isinstance(data, dict) or not data:
-        return default_state()
-    return _normalize_state(data)
+    state = default_state() if not isinstance(data, dict) or not data else _normalize_state(data)
+    materials_ready = load_materials_ready(client_slug)
+    if materials_ready is not None:
+        state["materials_ready"] = materials_ready
+    return state
 
 
 def save_state(client_slug: str, open_id: str, state: dict[str, Any]) -> Path:

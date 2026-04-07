@@ -13,6 +13,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 import common
+from xhs_customer_state import load_state
 from xhs_style_analyzer import (
     analyze_articles,
     analyze_images,
@@ -130,6 +131,43 @@ class XhsStyleAnalyzerTest(unittest.TestCase):
                 self.assertFalse(result["materials_ready"])
                 self.assertIn("profile-card 快照", writing_guide)
                 self.assertIn("主色参考", image_guide)
+            finally:
+                common.ROOT_DIR = original_root_dir
+                common.CLIENTS_DIR = original_clients_dir
+
+    def test_generate_style_guides_persists_materials_gate_for_runtime_state(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            original_root_dir = common.ROOT_DIR
+            original_clients_dir = common.CLIENTS_DIR
+            try:
+                common.ROOT_DIR = Path(temp_dir)
+                common.CLIENTS_DIR = Path(temp_dir) / "clients"
+                refs = common.get_client_root("wuhan-tutoring") / "references"
+                article_dir = refs / "article"
+                image_dir = refs / "images"
+                article_dir.mkdir(parents=True, exist_ok=True)
+                image_dir.mkdir(parents=True, exist_ok=True)
+
+                for index, title in enumerate(
+                    [
+                        "武汉中考数学提分怎么少走弯路",
+                        "武汉中考英语作文万能模板",
+                        "武汉中考全年备考时间线",
+                    ],
+                    start=1,
+                ):
+                    (article_dir / f"{index}.md").write_text(
+                        f"# {title}\n\n- access_level: full_note\n",
+                        encoding="utf-8",
+                    )
+                for index, color in enumerate([(255, 255, 255), (10, 20, 30), (200, 40, 60)], start=1):
+                    Image.new("RGB", (1080, 1440), color).save(image_dir / f"{index}.png")
+
+                result = generate_style_guides("wuhan-tutoring")
+                state = load_state("wuhan-tutoring", "ou_test_runtime")
+
+                self.assertTrue(result["materials_ready"])
+                self.assertTrue(state["materials_ready"])
             finally:
                 common.ROOT_DIR = original_root_dir
                 common.CLIENTS_DIR = original_clients_dir

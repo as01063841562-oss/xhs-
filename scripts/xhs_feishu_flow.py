@@ -45,6 +45,8 @@ def generate_xhs_payload(
     revision_notes: str | None = None,
     revision_scope: str | None = None,
     existing_payload: dict[str, Any] | None = None,
+    system_prompt_text: str | None = None,
+    style_guide_text: str | None = None,
 ) -> dict[str, Any]:
     """生成小红书素材包。
 
@@ -55,11 +57,22 @@ def generate_xhs_payload(
             from llm_client import OpenAICompatibleLLM, LLMConfigError
             client = OpenAICompatibleLLM(config)
             client.require_ready()
-            system = (
+            system_sections = [
                 "你是一名擅长教育行业内容增长的小红书策划。"
                 "请输出严格 JSON，字段必须包含：positioning, cover_title, cover_prompt, hashtags, publish_checklist, variants。"
                 "variants 必须有 3 条，每条包含 title, body, angle。"
-            )
+            ]
+            if system_prompt_text:
+                system_sections.append(
+                    "客户专用系统提示词如下，请优先遵守：\n"
+                    f"{system_prompt_text}"
+                )
+            if style_guide_text:
+                system_sections.append(
+                    "客户专用文案风格指南如下，请作为固定写作约束：\n"
+                    f"{style_guide_text}"
+                )
+            system = "\n\n".join(system_sections)
             revision_hint = ""
             if revision_mode == "modify":
                 revision_hint = (

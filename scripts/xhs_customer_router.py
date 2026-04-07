@@ -17,6 +17,13 @@ import common
 from xhs_feedback_parser import parse_feedback
 from xhs_customer_state import ensure_session_dir, load_state, save_state
 from xhs_feishu_flow import generate_slide_images, generate_xhs_payload
+from xhs_image_renderer import render_image
+from xhs_topic_generator import (
+    get_all_subjects,
+    get_random_topics,
+    get_topic_by_title,
+    get_topics_by_subject,
+)
 
 _TOPIC_HINTS = ("中考", "学科", "押题", "知识点")
 _FEEDBACK_HINTS = ("修改", "换一个", "换个", "回到文案", "重新来", "汇总")
@@ -105,14 +112,85 @@ def guard_materials_ready(state: dict[str, Any], intent: str) -> dict[str, Any]:
     return {"allowed": True, "intent": intent}
 
 
+def _extract_subject(message: str) -> str | None:
+    for subject in get_all_subjects():
+        if subject in message:
+            return subject
+    return None
+
+
+def _format_topic_option(topic: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "title": topic["title"],
+        "angle": topic.get("subtitle") or topic.get("audience") or "",
+        "tags": list(topic.get("tags", []))[:8],
+        "reference_style": topic.get("style"),
+        "audience": topic.get("audience"),
+    }
+
+
+def generate_topic_drafts(message: str, state: dict[str, Any]) -> list[dict[str, Any]]:
+    subject = _extract_subject(message)
+    candidates: list[dict[str, Any]] = []
+    seen_titles: set[str] = set()
+
+    matched_topic = get_topic_by_title(message)
+    if matched_topic:
+        candidates.append(matched_topic)
+        seen_titles.add(matched_topic["title"])
+
+    if subject:
+        for topic in get_topics_by_subject(subject):
+            if topic["title"] in seen_titles:
+                continue
+            candidates.append(topic)
+            seen_titles.add(topic["title"])
+
+    for topic in get_random_topics(5):
+        if topic["title"] in seen_titles:
+            continue
+        candidates.append(topic)
+        seen_titles.add(topic["title"])
+        if len(candidates) >= 5:
+            break
+
+    options = [_format_topic_option(topic) for topic in candidates[:5]]
+    drafts = state.setdefault("drafts", {})
+    drafts["topics"] = options
+    state["current_state"] = TOPIC_STATE
+    state["last_user_intent"] = "topic_request"
+    return options
+
+
 def generate_copywriting_draft(
     topic: str,
     audience: str,
     config: dict[str, Any],
     state: dict[str, Any],
     dry_run: bool = False,
+    client_slug: str = "wuhan-tutoring",
 ) -> dict[str, Any]:
-    payload = generate_xhs_payload(topic, audience, config, dry_run=dry_run)
+    client_root = common.get_client_root(client_slug)
+    system_prompt_path = client_root / "prompts" / "system-prompt.md"
+    style_guide_path = client_root / "references" / "文案风格指南.md"
+    system_prompt_text = (
+        system_prompt_path.read_text(encoding="utf-8")
+        if system_prompt_path.exists()
+        else None
+    )
+    style_guide_text = (
+        style_guide_path.read_text(encoding="utf-8")
+        if style_guide_path.exists()
+        else None
+    )
+    payload = generate_xhs_payload(
+        topic,
+        audience,
+        config,
+        dry_run=dry_run,
+        system_prompt_text=system_prompt_text,
+        style_guide_text=style_guide_text,
+    )
     drafts = state.setdefault("drafts", {})
     drafts["copywriting"] = payload
     state["current_state"] = COPYWRITING_STATE
@@ -151,12 +229,28 @@ def generate_graphic_draft(
     state: dict[str, Any],
     run_dir: Path,
     count: int = 3,
+    dry_run: bool = False,
 ) -> list[str]:
     graphic_dir = common.ensure_dir(run_dir / "graphics")
     generated: list[str] = []
+    variants = payload.get("variants") or []
+    hashtags = list(payload.get("hashtags", []))[:8]
     for index in range(1, count + 1):
         target = graphic_dir / f"graphic_{index}.png"
-        _write_placeholder_png(target)
+        if dry_run:
+            _write_placeholder_png(target)
+        else:
+            variant = variants[min(index - 1, len(variants) - 1)] if variants else {}
+            body = str(variant.get("body") or "")
+            points = [segment.strip() for segment in body.replace("\n", "。").split("。") if segment.strip()]
+            topic_data = {
+                "style": "info_card",
+                "title": variant.get("title") or payload.get("cover_title") or f"配图 {index}",
+                "subtitle": variant.get("angle") or payload.get("cover_title", ""),
+                "key_points": points[:6] or [payload.get("positioning", ""), payload.get("cover_title", "")],
+                "tags": hashtags,
+            }
+            render_image(topic_data, target)
         generated.append(str(target))
     state.setdefault("drafts", {})["graphic_images"] = generated
     state["current_state"] = GRAPHIC_STATE
@@ -215,6 +309,13 @@ def route_message(
     }
 
     if (
+        classified["intent"] == "topic_request"
+    ):
+        topic_options = generate_topic_drafts(message, state)
+        result["action"] = "generate_topic_drafts"
+        result["topic_options"] = topic_options
+        state_changed = True
+    elif (
         classified["intent"] == "selection_or_confirmation"
         and state.get("current_state") == COPYWRITING_STATE
         and state.get("confirmed", {}).get("topic")
@@ -226,6 +327,7 @@ def route_message(
             config=config,
             state=state,
             dry_run=dry_run,
+            client_slug=client_slug,
         )
         result["action"] = "generate_copywriting_draft"
         result["payload"] = payload
@@ -255,6 +357,7 @@ def route_message(
             payload=state["drafts"]["copywriting"],
             state=state,
             run_dir=run_dir,
+            dry_run=dry_run,
         )
         result["action"] = "generate_graphic_draft"
         result["graphic_images"] = graphic_images

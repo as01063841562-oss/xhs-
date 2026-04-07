@@ -11,6 +11,7 @@ SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
+import common
 from xhs_customer_router import (
     build_state_summary,
     classify_message,
@@ -119,6 +120,39 @@ class XhsCustomerRouterTest(unittest.TestCase):
         self.assertEqual(state["drafts"]["copywriting"], payload)
         mock_generate.assert_called_once()
 
+    def test_generate_copywriting_draft_passes_customer_prompt_and_style_guide(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            original_clients_dir = common.CLIENTS_DIR
+            try:
+                common.CLIENTS_DIR = Path(temp_dir) / "clients"
+                client_root = common.get_client_root("wuhan-tutoring")
+                (client_root / "prompts").mkdir(parents=True, exist_ok=True)
+                (client_root / "references").mkdir(parents=True, exist_ok=True)
+                (client_root / "prompts" / "system-prompt.md").write_text(
+                    "# 武汉教培系统提示词\n禁止未确认自动推进。",
+                    encoding="utf-8",
+                )
+                (client_root / "references" / "文案风格指南.md").write_text(
+                    "# 文案风格指南\n标题优先家长决策场景。",
+                    encoding="utf-8",
+                )
+                state = {"drafts": {"copywriting": None}}
+
+                with patch("xhs_customer_router.generate_xhs_payload", return_value={"cover_title": "标题"}) as mock_generate:
+                    generate_copywriting_draft(
+                        topic="初三数学二次函数",
+                        audience="武汉家长",
+                        config={},
+                        state=state,
+                        dry_run=False,
+                        client_slug="wuhan-tutoring",
+                    )
+
+                self.assertEqual(mock_generate.call_args.kwargs["system_prompt_text"], "# 武汉教培系统提示词\n禁止未确认自动推进。")
+                self.assertEqual(mock_generate.call_args.kwargs["style_guide_text"], "# 文案风格指南\n标题优先家长决策场景。")
+            finally:
+                common.CLIENTS_DIR = original_clients_dir
+
     def test_confirm_copywriting_locks_copywriting_and_moves_to_cover(self) -> None:
         state = {
             "current_state": "state_1_copywriting",
@@ -149,12 +183,39 @@ class XhsCustomerRouterTest(unittest.TestCase):
 
         with TemporaryDirectory() as tmp:
             run_dir = Path(tmp)
-            generated = generate_graphic_draft(payload, state, run_dir)
+            generated = generate_graphic_draft(payload, state, run_dir, dry_run=True)
 
         self.assertEqual(len(generated), 3)
         self.assertTrue(all(path.endswith(".png") for path in generated))
         self.assertEqual(state["drafts"]["graphic_images"], generated)
         self.assertTrue(all("graphics/graphic_" in path for path in generated))
+
+    def test_generate_graphic_draft_uses_renderer_outside_dry_run(self) -> None:
+        state = {"drafts": {"graphic_images": []}}
+        payload = {
+            "cover_title": "标题",
+            "hashtags": ["武汉中考", "数学"],
+            "variants": [
+                {"title": "图1", "angle": "角度1", "body": "第一点。第二点。第三点。"},
+                {"title": "图2", "angle": "角度2", "body": "A。B。C。"},
+                {"title": "图3", "angle": "角度3", "body": "甲。乙。丙。"},
+            ],
+        }
+
+        with TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+
+            def fake_render(topic, output_path):
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                output_path.write_bytes(b"png")
+                return output_path
+
+            with patch("xhs_customer_router.render_image", side_effect=fake_render) as mock_render:
+                generated = generate_graphic_draft(payload, state, run_dir, dry_run=False)
+
+        self.assertEqual(len(generated), 3)
+        self.assertEqual(mock_render.call_count, 3)
+        self.assertEqual(state["drafts"]["graphic_images"], generated)
 
     def test_route_message_returns_summary_without_mutating_state(self) -> None:
         state = {
@@ -211,6 +272,43 @@ class XhsCustomerRouterTest(unittest.TestCase):
         self.assertEqual(result["status"], "blocked")
         self.assertEqual(result["reason"], "materials_not_ready")
         self.assertFalse(result["state_changed"])
+        mock_save.assert_not_called()
+
+    def test_route_message_generates_topic_drafts_when_materials_are_ready(self) -> None:
+        state = {
+            "materials_ready": True,
+            "current_state": "state_0_topic",
+            "confirmed": {
+                "topic": None,
+                "title": None,
+                "copywriting": None,
+                "cover": None,
+                "graphics": None,
+            },
+            "drafts": {
+                "topics": [],
+                "copywriting": None,
+                "cover_images": [],
+                "graphic_images": [],
+            },
+        }
+
+        with patch("xhs_customer_router.load_state", return_value=state), patch(
+            "xhs_customer_router.save_state"
+        ) as mock_save:
+            result = route_message(
+                client_slug="wuhan-tutoring",
+                open_id="ou_test",
+                message="#选题 数学 二次函数",
+                dry_run=True,
+            )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["action"], "generate_topic_drafts")
+        self.assertTrue(result["state_changed"])
+        self.assertGreaterEqual(len(result["topic_options"]), 1)
+        self.assertGreaterEqual(len(state["drafts"]["topics"]), 1)
+        self.assertTrue(any("二次函数" in item["title"] or "数学" in item["title"] for item in result["topic_options"]))
         mock_save.assert_not_called()
 
 

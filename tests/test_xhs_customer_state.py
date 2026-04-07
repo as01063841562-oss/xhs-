@@ -101,6 +101,24 @@ class XhsCustomerStateTest(unittest.TestCase):
             finally:
                 common.CLIENTS_DIR = original_clients_dir
 
+    def test_load_state_prefers_client_materials_gate_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            original_clients_dir = common.CLIENTS_DIR
+            try:
+                common.CLIENTS_DIR = Path(temp_dir) / "clients"
+                gate_path = Path(temp_dir) / "clients" / "wuhan-tutoring" / "state" / "materials_gate.json"
+                gate_path.parent.mkdir(parents=True, exist_ok=True)
+                gate_path.write_text(
+                    json.dumps({"materials_ready": True}, ensure_ascii=False),
+                    encoding="utf-8",
+                )
+
+                loaded = load_state("wuhan-tutoring", "open-123")
+
+                self.assertTrue(loaded["materials_ready"])
+            finally:
+                common.CLIENTS_DIR = original_clients_dir
+
     def test_save_state_updates_updated_at_before_persisting(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             original_clients_dir = common.CLIENTS_DIR

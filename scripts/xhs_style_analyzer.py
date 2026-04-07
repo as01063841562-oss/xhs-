@@ -13,6 +13,7 @@ from typing import Any
 from PIL import Image
 
 import common
+from xhs_customer_state import materials_gate_path
 
 DEFAULT_CLIENT = "wuhan-tutoring"
 IGNORED_TITLE_EXAMPLES = {"置顶"}
@@ -193,6 +194,16 @@ def generate_style_guides(client_slug: str = DEFAULT_CLIENT) -> dict[str, Any]:
     common.save_text_file(
         refs_dir / "图片风格模板.md",
         render_image_guide(image_report),
+    )
+    common.save_json_file(
+        materials_gate_path(client_slug),
+        {
+            "materials_ready": materials_ready,
+            "article_sample_count": int(article_report.get("sample_count", 0)),
+            "full_note_count": int(article_report.get("full_note_count", 0)),
+            "image_sample_count": int(image_report.get("sample_count", 0)),
+            "updated_at": common.timestamp(),
+        },
     )
 
     return {
