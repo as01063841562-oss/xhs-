@@ -162,6 +162,45 @@ def generate_topic_drafts(message: str, state: dict[str, Any]) -> list[dict[str,
     return options
 
 
+_ORDINAL_MAP = {
+    "1": 1,
+    "一": 1,
+    "2": 2,
+    "二": 2,
+    "3": 3,
+    "三": 3,
+    "4": 4,
+    "四": 4,
+    "5": 5,
+    "五": 5,
+}
+
+
+def _select_topic_option(message: str, topics: list[dict[str, Any]]) -> dict[str, Any] | None:
+    if not topics:
+        return None
+
+    for pattern in (
+        r"第\s*([12345一二三四五])\s*个",
+        r"第\s*([12345一二三四五])",
+        r"选\s*([12345一二三四五])",
+    ):
+        match = __import__("re").search(pattern, message)
+        if not match:
+            continue
+        index = _ORDINAL_MAP.get(match.group(1))
+        if index is None:
+            continue
+        if 1 <= index <= len(topics):
+            return topics[index - 1]
+
+    for topic in topics:
+        title = str(topic.get("title") or "")
+        if title and title in message:
+            return topic
+    return None
+
+
 def generate_copywriting_draft(
     topic: str,
     audience: str,
@@ -317,20 +356,40 @@ def route_message(
         state_changed = True
     elif (
         classified["intent"] == "selection_or_confirmation"
-        and state.get("current_state") == COPYWRITING_STATE
-        and state.get("confirmed", {}).get("topic")
+        and state.get("current_state") == TOPIC_STATE
+        and state.get("drafts", {}).get("topics")
     ):
-        config = {} if dry_run else common.load_config(config_path)
-        payload = generate_copywriting_draft(
-            topic=str(state["confirmed"]["topic"]),
-            audience=audience,
-            config=config,
-            state=state,
-            dry_run=dry_run,
-            client_slug=client_slug,
+        selected_topic = _select_topic_option(
+            message,
+            list(state.get("drafts", {}).get("topics") or []),
         )
-        result["action"] = "generate_copywriting_draft"
-        result["payload"] = payload
+        if selected_topic:
+            state.setdefault("confirmed", {})["topic"] = selected_topic["title"]
+            state["current_topic_id"] = common.slugify(selected_topic["title"])
+            state["current_state"] = COPYWRITING_STATE
+            config = {} if dry_run else common.load_config(config_path)
+            payload = generate_copywriting_draft(
+                topic=str(selected_topic["title"]),
+                audience=str(selected_topic.get("audience") or audience),
+                config=config,
+                state=state,
+                dry_run=dry_run,
+                client_slug=client_slug,
+            )
+            result["action"] = "confirm_topic_and_generate_copywriting_draft"
+            result["payload"] = payload
+            state_changed = True
+        else:
+            result["action"] = "noop"
+            result["response"] = build_state_summary(state)
+    elif (
+        classified["intent"] == "selection_or_confirmation"
+        and state.get("current_state") == COPYWRITING_STATE
+        and state.get("drafts", {}).get("copywriting")
+    ):
+        confirm_copywriting(state)
+        result["action"] = "confirm_copywriting"
+        result["confirmed_copywriting"] = state.get("confirmed", {}).get("copywriting")
         state_changed = True
     elif (
         classified["intent"] == "cover_request"

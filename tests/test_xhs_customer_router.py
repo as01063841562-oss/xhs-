@@ -311,6 +311,88 @@ class XhsCustomerRouterTest(unittest.TestCase):
         self.assertTrue(any("二次函数" in item["title"] or "数学" in item["title"] for item in result["topic_options"]))
         mock_save.assert_not_called()
 
+    def test_route_message_selects_topic_and_generates_copywriting_draft(self) -> None:
+        state = {
+            "materials_ready": True,
+            "current_state": "state_0_topic",
+            "confirmed": {
+                "topic": None,
+                "title": None,
+                "copywriting": None,
+                "cover": None,
+                "graphics": None,
+            },
+            "drafts": {
+                "topics": [
+                    {
+                        "title": "初三数学必考：二次函数题型全梳理",
+                        "angle": "掌握这些题型轻松拿高分",
+                        "tags": ["二次函数", "中考数学"],
+                        "reference_style": "info_card",
+                        "audience": "初三学生家长",
+                    }
+                ],
+                "copywriting": None,
+                "cover_images": [],
+                "graphic_images": [],
+            },
+        }
+        payload = {"cover_title": "标题", "variants": [{"title": "版本1"}]}
+
+        with patch("xhs_customer_router.load_state", return_value=state), patch(
+            "xhs_customer_router.save_state"
+        ) as mock_save, patch("xhs_customer_router.generate_xhs_payload", return_value=payload):
+            result = route_message(
+                client_slug="wuhan-tutoring",
+                open_id="ou_test",
+                message="我选第一个",
+                dry_run=True,
+            )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["action"], "confirm_topic_and_generate_copywriting_draft")
+        self.assertEqual(state["confirmed"]["topic"], "初三数学必考：二次函数题型全梳理")
+        self.assertEqual(state["current_state"], "state_1_copywriting")
+        self.assertEqual(state["drafts"]["copywriting"], payload)
+        self.assertTrue(result["state_changed"])
+        mock_save.assert_not_called()
+
+    def test_route_message_confirms_copywriting_and_moves_to_cover(self) -> None:
+        state = {
+            "materials_ready": True,
+            "current_state": "state_1_copywriting",
+            "confirmed": {
+                "topic": "初三数学必考：二次函数题型全梳理",
+                "title": None,
+                "copywriting": None,
+                "cover": None,
+                "graphics": None,
+            },
+            "drafts": {
+                "topics": [],
+                "copywriting": {"cover_title": "标题", "variants": [{"title": "版本1"}]},
+                "cover_images": [],
+                "graphic_images": [],
+            },
+        }
+
+        with patch("xhs_customer_router.load_state", return_value=state), patch(
+            "xhs_customer_router.save_state"
+        ) as mock_save:
+            result = route_message(
+                client_slug="wuhan-tutoring",
+                open_id="ou_test",
+                message="这个文案可以，继续",
+                dry_run=True,
+            )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["action"], "confirm_copywriting")
+        self.assertEqual(state["current_state"], "state_2_cover")
+        self.assertEqual(state["confirmed"]["copywriting"], {"cover_title": "标题", "variants": [{"title": "版本1"}]})
+        self.assertTrue(result["state_changed"])
+        mock_save.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()
