@@ -1,0 +1,39 @@
+client:
+  slug: "wuhan-tutoring"
+  display_name: "武汉教育补习班"
+  platform: "xiaohongshu"
+  channel: "feishu_dm"
+
+materials:
+  min_articles: 3
+  min_images: 3
+  sample_requirements:
+    article_samples: 3
+    image_samples: 3
+  ready_when:
+    - "references/article/ has at least 3 parseable article samples"
+    - "references/images/ has at least 3 usable image samples"
+    - "references/文案风格指南.md"
+    - "references/图片风格模板.md"
+  source_profiles:
+    - "https://www.xiaohongshu.com/user/profile/684676fd000000001e03fa34"
+    - "https://www.xiaohongshu.com/user/profile/6901fc020000000037003fed"
+    - "https://www.xiaohongshu.com/user/profile/6865ebf8000000001e004b42"
+
+workflow:
+  initial_state: "state_0_topic"
+  allow_summary_anytime: true
+  require_explicit_confirmation: true
+  lock_confirmed_sections: true
+
+copywriting:
+  min_length: 800
+  max_length: 1200
+  default_tags_min: 5
+  default_tags_max: 8
+  publish_reminder: false
+
+defaults:
+  revision_limit: null
+  graphic_style_bias: "professional"
+  cover_style_bias: "poster"
