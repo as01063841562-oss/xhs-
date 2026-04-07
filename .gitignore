@@ -6,6 +6,13 @@ config/.token_cache.json
 # 生成产物
 output/*
 !output/.gitkeep
+clients/wuhan-tutoring/output/sessions/*
+!clients/wuhan-tutoring/output/sessions/.gitkeep
+
+# 武汉客户运行态
+clients/wuhan-tutoring/state/*.json
+clients/wuhan-tutoring/state/feishu_dm/*.json
+!clients/wuhan-tutoring/state/feishu_dm/.gitkeep
 
 # 日志
 logs/*
