@@ -5,7 +5,7 @@
   1. 生成小红书素材包（文案 + 标签 + 封面 prompt）
   2. 生成封面图（Gemini 网页自动化或占位图）
   3. 上传图片到飞书
-  4. 发送审核卡片到飞书（✅通过 / ✏️修改 / ❌重写）
+  4. 发送审核卡片到飞书（✅通过 / 刷新封面图 / 刷新内容配图）
   5. 等待飞书 card.action.trigger 回流
   6. 通过 → 发送最终稿卡片；修改/重写 → 先打开修改说明卡，填写后再重新生成审核卡
 
@@ -60,66 +60,65 @@ def generate_xhs_payload(
     """生成小红书素材包。
 
     dry_run 时使用 stub 数据；revision_mode 用于修改/重写回路。
+    真实模式下如果文本后端失败，应直接报错，不能静默回退成演示 stub。
     """
     if not dry_run:
-        try:
-            from llm_client import OpenAICompatibleLLM, LLMConfigError
-            client = OpenAICompatibleLLM(config)
-            client.require_ready()
-            system_sections = [
-                "你是一名擅长教育行业内容增长的小红书策划。"
-                "请输出严格 JSON，字段必须包含：positioning, cover_title, cover_prompt, hashtags, publish_checklist, variants。"
-                "variants 必须有 3 条，每条包含 title, body, angle。"
-            ]
-            if system_prompt_text:
-                system_sections.append(
-                    "客户专用系统提示词如下，请优先遵守：\n"
-                    f"{system_prompt_text}"
-                )
-            if style_guide_text:
-                system_sections.append(
-                    "客户专用文案风格指南如下，请作为固定写作约束：\n"
-                    f"{style_guide_text}"
-                )
-            system = "\n\n".join(system_sections)
-            revision_hint = ""
-            if revision_mode == "modify":
-                revision_hint = (
-                    "当前处于修改版，请在保留主题和核心观点的前提下，"
-                    "增强开头钩子，压缩冗余表达，并让标题更像可直接发布的小红书笔记。"
-                )
-            elif revision_mode == "rewrite":
-                revision_hint = (
-                    "当前处于重写版，请完全更换切入角度、标题和表达节奏，"
-                    "但仍围绕同一主题输出可直接人工复审的素材包。"
-                )
-            if revision_scope:
-                revision_hint += f"修改范围：{revision_scope}。\n"
-            if revision_notes:
-                revision_hint += (
-                    "用户的修改说明如下，请严格遵守并尽量保留原意：\n"
-                    f"{revision_notes}\n"
-                )
-            existing_hint = ""
-            if existing_payload:
-                existing_hint = (
-                    "现有初稿如下，仅供参考，不要逐字照搬：\n"
-                    f"{json.dumps(existing_payload, ensure_ascii=False, indent=2)}\n"
-                )
-            user = (
-                f"主题：{topic}\n"
-                f"目标读者：{audience}\n"
-                f"{revision_hint}\n"
-                f"{existing_hint}"
-                "要求：\n"
-                "1. 文案适合人工复审后直接发布。\n"
-                "2. 标签控制在 8-12 个。\n"
-                "3. 封面标题不超过 16 个字。\n"
-                "4. 不能承诺自动发帖或绕过平台风控。\n"
+        from llm_client import OpenAICompatibleLLM
+
+        client = OpenAICompatibleLLM(config)
+        client.require_ready()
+        system_sections = [
+            "你是一名擅长教育行业内容增长的小红书策划。"
+            "请输出严格 JSON，字段必须包含：positioning, cover_title, cover_prompt, hashtags, publish_checklist, variants。"
+            "variants 必须有 3 条，每条包含 title, body, angle。"
+        ]
+        if system_prompt_text:
+            system_sections.append(
+                "客户专用系统提示词如下，请优先遵守：\n"
+                f"{system_prompt_text}"
             )
-            return client.chat_json(system, user, temperature=0.7)
-        except Exception as e:
-            print(f"  ⚠️  LLM 调用失败 ({e})，回退到 stub 数据")
+        if style_guide_text:
+            system_sections.append(
+                "客户专用文案风格指南如下，请作为固定写作约束：\n"
+                f"{style_guide_text}"
+            )
+        system = "\n\n".join(system_sections)
+        revision_hint = ""
+        if revision_mode == "modify":
+            revision_hint = (
+                "当前处于修改版，请在保留主题和核心观点的前提下，"
+                "增强开头钩子，压缩冗余表达，并让标题更像可直接发布的小红书笔记。"
+            )
+        elif revision_mode == "rewrite":
+            revision_hint = (
+                "当前处于重写版，请完全更换切入角度、标题和表达节奏，"
+                "但仍围绕同一主题输出可直接人工复审的素材包。"
+            )
+        if revision_scope:
+            revision_hint += f"修改范围：{revision_scope}。\n"
+        if revision_notes:
+            revision_hint += (
+                "用户的修改说明如下，请严格遵守并尽量保留原意：\n"
+                f"{revision_notes}\n"
+            )
+        existing_hint = ""
+        if existing_payload:
+            existing_hint = (
+                "现有初稿如下，仅供参考，不要逐字照搬：\n"
+                f"{json.dumps(existing_payload, ensure_ascii=False, indent=2)}\n"
+            )
+        user = (
+            f"主题：{topic}\n"
+            f"目标读者：{audience}\n"
+            f"{revision_hint}\n"
+            f"{existing_hint}"
+            "要求：\n"
+            "1. 文案适合人工复审后直接发布。\n"
+            "2. 标签控制在 8-12 个。\n"
+            "3. 封面标题不超过 16 个字。\n"
+            "4. 不能承诺自动发帖或绕过平台风控。\n"
+        )
+        return client.chat_json(system, user, temperature=0.7)
 
     # stub 数据
     payload = {
@@ -521,22 +520,19 @@ def _render_mixed_slide_set(
         refresh_index=version_index if marker != "init" else 0,
         current_graphic_paths=graphic_current,
     )
-    prompt_graphics = _render_prompt_graphics(
-        run_dir=run_dir,
-        payload=payload,
-        config=config,
-        dry_run=dry_run,
-        skip_image=skip_image,
-        image_templates=image_templates,
-        refresh_index=version_index if marker != "init" else 0,
-        current_graphic_paths=graphic_current,
-    )
-    graphics: list[Path] = []
-    for index in range(2):
-        if index < len(overlay_graphics):
-            graphics.append(overlay_graphics[index])
-        else:
-            graphics.append(prompt_graphics[index])
+    graphics: list[Path] = list(overlay_graphics)
+    if len(graphics) < 2:
+        prompt_graphics = _render_prompt_graphics(
+            run_dir=run_dir,
+            payload=payload,
+            config=config,
+            dry_run=dry_run,
+            skip_image=skip_image,
+            image_templates=image_templates,
+            refresh_index=version_index if marker != "init" else 0,
+            current_graphic_paths=graphic_current,
+        )
+        graphics.extend(prompt_graphics[len(graphics):2])
 
     return [cover_path, *graphics]
 
@@ -1128,23 +1124,32 @@ def run_flow(
     print(f"   模式：{'dry-run（本地测试）' if dry_run else '真实运行'}")
     print("=" * 60)
 
+    run_dir = make_run_dir("xhs_feishu", topic)
+    result["task_dir"] = str(run_dir)
+
     # ── Step 0: 匹配预设选题 ────────────────────────────────
     topic_data = _match_topic_data(topic)
 
     # ── Step 1: 生成素材包 ──────────────────────────────────
     print("\n📦 步骤 1/4：生成小红书素材包...")
-    # 如果匹配到预设选题，用选题里的标签和标题
-    if topic_data:
-        payload = generate_xhs_payload(topic, audience, config, dry_run)
-        payload["hashtags"] = topic_data.get("tags", payload["hashtags"])
-        payload["cover_title"] = topic_data.get("title", payload["cover_title"])
-    else:
-        payload = generate_xhs_payload(topic, audience, config, dry_run)
+    try:
+        # 如果匹配到预设选题，用选题里的标签和标题
+        if topic_data:
+            payload = generate_xhs_payload(topic, audience, config, dry_run)
+            payload["hashtags"] = topic_data.get("tags", payload["hashtags"])
+            payload["cover_title"] = topic_data.get("title", payload["cover_title"])
+        else:
+            payload = generate_xhs_payload(topic, audience, config, dry_run)
+    except Exception as e:
+        print(f"  ❌ 素材包生成失败: {e}")
+        result["status"] = "failed"
+        result["error"] = f"素材包生成失败: {e}"
+        _save_result(run_dir, result)
+        return result
     review_image_templates = _review_image_template_state()
     cover_base_image_path = _normalize_optional_path(base_image_path)
     graphic_base_image_paths = _normalize_optional_paths(graphic_base_image_paths)
 
-    run_dir = make_run_dir("xhs_feishu", topic)
     save_json_file(run_dir / "payload.json", payload)
     print(f"  ✅ 素材包已生成，{len(payload['variants'])} 个版本")
     print(f"  📁 任务目录: {run_dir}")
@@ -1602,16 +1607,23 @@ def resume_review_action(
         print(f"\n✏️  收到 {action}，将按修改说明重新生成初稿...")
     else:
         print(f"\n✏️  收到 {action}，开始重新生成初稿...")
-    new_payload = generate_xhs_payload(
-        topic,
-        audience,
-        config,
-        dry_run=effective_dry_run,
-        revision_mode=action,
-        revision_notes=revision_notes,
-        revision_scope=revision_scope,
-        existing_payload=payload,
-    )
+    try:
+        new_payload = generate_xhs_payload(
+            topic,
+            audience,
+            config,
+            dry_run=effective_dry_run,
+            revision_mode=action,
+            revision_notes=revision_notes,
+            revision_scope=revision_scope,
+            existing_payload=payload,
+        )
+    except Exception as e:
+        print(f"  ❌ 重新生成素材包失败: {e}")
+        result["status"] = "failed"
+        result["error"] = f"重新生成素材包失败: {e}"
+        _save_result(run_dir, result)
+        return result
     save_json_file(run_dir / "payload.json", new_payload)
     save_text_file(run_dir / "cover_title.txt", new_payload["cover_title"] + "\n")
     save_text_file(run_dir / "cover_prompt.txt", new_payload["cover_prompt"] + "\n")

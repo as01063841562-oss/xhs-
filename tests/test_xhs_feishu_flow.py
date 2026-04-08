@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import sys
+import types
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -95,6 +96,31 @@ def review_state(
 class XhsFeishuFlowTest(unittest.TestCase):
     maxDiff = None
 
+    def test_generate_xhs_payload_real_mode_raises_instead_of_silent_stub_fallback(self) -> None:
+        fake_module = types.ModuleType("llm_client")
+
+        class BrokenLLM:
+            def __init__(self, _config):
+                pass
+
+            def require_ready(self) -> None:
+                return None
+
+            def chat_json(self, *_args, **_kwargs):
+                raise RuntimeError("quota exhausted")
+
+        fake_module.OpenAICompatibleLLM = BrokenLLM
+        fake_module.LLMConfigError = RuntimeError
+
+        with patch.dict(sys.modules, {"llm_client": fake_module}):
+            with self.assertRaisesRegex(RuntimeError, "quota exhausted"):
+                xhs_feishu_flow.generate_xhs_payload(
+                    topic="真实链路阻断验证",
+                    audience="武汉家长",
+                    config={},
+                    dry_run=False,
+                )
+
     def test_generate_slide_images_uses_cover_plus_two_content_images_for_preset_topics(self) -> None:
         payload = sample_payload()
         topic_data = sample_preset_topic_data()
@@ -174,6 +200,44 @@ class XhsFeishuFlowTest(unittest.TestCase):
         self.assertEqual(mock_overlay.call_args.kwargs["template_family"], "promo_blast")
         mock_prompt_graphics.assert_called_once()
 
+    def test_generate_slide_images_prefers_graphic_base_images_without_prompt_overwrite(self) -> None:
+        payload = sample_payload()
+        with TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            cover_base = run_dir / "base-cover.png"
+            graphic_one = run_dir / "graphic-1.png"
+            graphic_two = run_dir / "graphic-2.png"
+            for path in (cover_base, graphic_one, graphic_two):
+                path.write_bytes(b"img")
+
+            with patch.object(
+                xhs_feishu_flow,
+                "render_base_image_overlay",
+                side_effect=lambda **kwargs: Path(kwargs["output_path"]),
+            ) as mock_overlay, patch.object(
+                xhs_feishu_flow,
+                "_render_prompt_graphics",
+                return_value=[run_dir / "slides" / "slide_2.png", run_dir / "slides" / "slide_3.png"],
+            ) as mock_prompt_graphics:
+                slides = xhs_feishu_flow.generate_slide_images(
+                    run_dir=run_dir,
+                    payload=payload,
+                    topic_data=None,
+                    config={},
+                    dry_run=False,
+                    skip_image=False,
+                    image_templates={
+                        "cover_template_key": "promo_blast",
+                        "graphics_template_key": "info_card_blue",
+                    },
+                    cover_base_image_path=str(cover_base),
+                    graphic_base_image_paths=[str(graphic_one), str(graphic_two)],
+                )
+
+        self.assertEqual([path.name for path in slides], ["slide_1.png", "slide_2.png", "slide_3.png"])
+        self.assertEqual(mock_overlay.call_count, 3)
+        mock_prompt_graphics.assert_not_called()
+
     def test_generate_slide_images_raises_when_prompt_templates_fail(self) -> None:
         payload = sample_payload()
         topic_data = sample_preset_topic_data()
@@ -182,7 +246,7 @@ class XhsFeishuFlowTest(unittest.TestCase):
             run_dir = Path(tmp)
             with patch.object(
                 xhs_feishu_flow,
-                "_render_prompt_slide_set",
+                "_render_mixed_slide_set",
                 side_effect=RuntimeError("prompt backend failed"),
             ), patch.object(
                 xhs_feishu_flow,

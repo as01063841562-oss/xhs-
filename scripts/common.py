@@ -99,6 +99,83 @@ def command_exists(command: str | None) -> bool:
     return shutil.which(command) is not None
 
 
+def _provider_api_key(block: dict[str, Any] | None) -> str | None:
+    if not isinstance(block, dict):
+        return None
+    value = _pick_non_placeholder(block, ("api_key", "apiKey"))
+    return str(value) if value else None
+
+
+def _strip_model_provider(model_name: Any) -> str | None:
+    if is_placeholder(model_name):
+        return None
+    text = str(model_name or "").strip()
+    if not text:
+        return None
+    return text.split("/", 1)[-1]
+
+
+def resolve_llm_api_config(
+    llm_api_config: dict[str, Any] | None = None,
+    openclaw_config: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Resolve openai-compatible LLM settings from project + OpenClaw config."""
+
+    resolved = dict(llm_api_config or {})
+    backend = str(resolved.get("backend") or "openai_compatible")
+    if backend != "openai_compatible":
+        return resolved
+
+    openclaw_data = openclaw_config if openclaw_config is not None else load_openclaw_config()
+    providers = (
+        openclaw_data.get("models", {}).get("providers", {})
+        if isinstance(openclaw_data, dict)
+        else {}
+    )
+    default_model = (
+        openclaw_data.get("agents", {})
+        .get("defaults", {})
+        .get("model", {})
+        .get("primary")
+        if isinstance(openclaw_data, dict)
+        else None
+    )
+    default_provider = ""
+    if isinstance(default_model, str) and "/" in default_model:
+        default_provider = default_model.split("/", 1)[0].strip()
+
+    if config_state(resolved.get("base_url")) != "ready":
+        openai_base_url = _pick_non_placeholder(
+            providers.get("openai", {}) if isinstance(providers, dict) else {},
+            ("base_url", "baseUrl"),
+        )
+        if openai_base_url:
+            resolved["base_url"] = str(openai_base_url)
+
+    if config_state(resolved.get("model")) != "ready":
+        stripped_model = _strip_model_provider(default_model)
+        if stripped_model:
+            resolved["model"] = stripped_model
+
+    if config_state(resolved.get("api_key")) != "ready":
+        provider_order: list[str] = ["openai"]
+        if default_provider and default_provider not in provider_order:
+            provider_order.append(default_provider)
+        for fallback_name in ("anthropic", "google"):
+            if fallback_name not in provider_order:
+                provider_order.append(fallback_name)
+
+        for provider_name in provider_order:
+            candidate = _provider_api_key(
+                providers.get(provider_name, {}) if isinstance(providers, dict) else {}
+            )
+            if candidate:
+                resolved["api_key"] = candidate
+                break
+
+    return resolved
+
+
 def load_config(config_path: str | None = None) -> dict[str, Any]:
     path = resolve_path(config_path) if config_path else CONFIG_DIR / "config.yaml"
     if not path or not path.exists():
@@ -118,6 +195,10 @@ def load_config(config_path: str | None = None) -> dict[str, Any]:
     project.setdefault("log_dir", "./logs")
     project.setdefault("output_dir", "./output")
     project.setdefault("default_author", "AI 内容实验室")
+    merged["llm_api"] = resolve_llm_api_config(
+        merged.get("llm_api") or {},
+        load_openclaw_config(),
+    )
     return merged
 
 

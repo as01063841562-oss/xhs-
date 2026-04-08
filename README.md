@@ -1,22 +1,27 @@
 # 教育自媒体 AI 自动化首期工程
 
-本项目是首期可交付工作区，聚焦两个可运行场景：
+本项目是首期可交付工作区。当前已经实跑并收口的主交付路径是：
 
-- 公众号内容生成与草稿箱推送辅助
 - 小红书图文素材包生成
+- 飞书审核卡片回流
+- 客户底图模式下的刷新封面图 / 刷新内容配图 / 通过后最终稿卡片
+
+公众号链路仍保留在仓库内，但只有在补齐真实 `wechat.app_secret` 后才算可直接交付。
 
 整体原则是 `本机运行 + OpenClaw 调度 + 飞书交互 + 人工审核兜底`。
 
 ## 当前交付边界
 
-- 公众号：生成选题大纲、文章 Markdown、配图 prompt、配图文件、HTML、草稿箱推送结果
+- 已验收主路径：小红书 + Feishu 审核回流
 - 小红书：生成 3 版文案、标签建议、封面标题、封面 prompt/封面图、发布检查清单
+- 飞书：审核卡片、刷新封面图、刷新内容配图、最终稿卡片
+- 公众号：代码在仓库里，但当前机器默认不宣称“真实可交付”
 - 私域回复和视频高光处理只预留接口，不在首期实现
 
 ## 目录说明
 
 ```text
-edu-media-openclaw/
+codex-wuhan-xhs-workflow/
 ├── SKILL.md                  # OpenClaw 本地 skill 入口
 ├── config/                   # 配置模板与本地配置
 ├── docs/                     # 交付文档、SOP、排障说明
@@ -32,7 +37,8 @@ edu-media-openclaw/
 ### 1. 创建虚拟环境并安装依赖
 
 ```bash
-cd /Users/lmsx/Documents/Playground/edu-media-openclaw
+PROJECT_ROOT="/Users/lmsx/.config/superpowers/worktrees/edu-media-openclaw/codex-wuhan-xhs-workflow"
+cd "$PROJECT_ROOT"
 python3 -m venv .venv
 . .venv/bin/activate
 pip install -r requirements.txt
@@ -42,7 +48,7 @@ pip install -r requirements.txt
 
 项目默认读取：
 
-- `/Users/lmsx/Documents/Playground/edu-media-openclaw/config/config.yaml`
+- `$PROJECT_ROOT/config/config.yaml`
 - 若配置里声明了 `inherit.wechat_config_path`，会先读取已有公众号 skill 配置，再由当前项目配置覆盖
 
 建议先运行：
@@ -76,20 +82,19 @@ feishu:
 
 项目现在支持两类后端：
 
-- 文本：`openai_compatible` 或 `gemini_local_cli`
+- 文本：`openai_compatible` 或 `gemini_cli`
 - 生图：`gemini_web`（飞书流推荐）或 `gemini_cli`（仅在你已确认 CLI 能落盘图片时）
 
-如果你想让正文生成走本机 Gemini CLI，把 [config.yaml](/Users/lmsx/Documents/Playground/edu-media-openclaw/config/config.yaml) 改成：
+当前默认文本链路建议保持 `openai_compatible`，并优先从 `~/.openclaw/openclaw.json` 继承稳定配置。
+如果你想强制改回本机 Gemini CLI，把 [config.yaml](/Users/lmsx/.config/superpowers/worktrees/edu-media-openclaw/codex-wuhan-xhs-workflow/config/config.yaml) 改成：
 
 ```yaml
 llm_api:
-  backend: "gemini_local_cli"
+  backend: "gemini_cli"
 
 llm_cli:
-  command: "/opt/homebrew/bin/node"
-  script_path: "/Users/lmsx/gemini-cli.js"
-  api_key: "你的真实 Gemini API Key"
-  sync_key_to_user_config: true
+  command: "/opt/homebrew/bin/gemini"
+  model: "gemini-2.5-flash"
 ```
 
 如果你想让飞书审核流走本机 Gemini 网页自动化（当前这条链路已验证可用），把配置里的 `gemini_image.backend` 保持或改成 `gemini_web`。
@@ -103,7 +108,7 @@ image_api:
 browser_image:
   launcher: "open"
   chrome_app: "Google Chrome"
-  profile_dir: "/Users/lmsx/Documents/Playground/edu-media-openclaw/.runtime/chrome-user-profile"
+  profile_dir: "~/.openclaw/runtime/edu-media-openclaw/chrome-user-profile"
   source_profile_dir: "/Users/lmsx/Library/Application Support/Google/Chrome"
   remote_debug_port: 9227
   gemini_url: "https://gemini.google.com/app"
@@ -113,11 +118,22 @@ browser_image:
 
 说明：
 
-- `gemini_local_cli` 适合正文、大纲、标签、文案生成
+- `openai_compatible` 是当前默认文本链路，优先用于真实文案生成
 - `gemini_web` 适合飞书审核流的真实封面图输出
 - `gemini_cli` 只建议在你已经确认它能真正落盘图片时再使用
 - 这条生图链路复用你当前 Gemini 账号或 Chrome 登录态，不额外购买图片 API
-- 如果接口 key 还没准备好，继续用 `--dry-run` 不会阻塞流程验证
+- 如果文本或图片接口还没准备好，继续用 `--dry-run` 不会阻塞流程验证
+
+### 2.3 OpenClaw / Feishu 回流前置
+
+飞书卡片按钮回流不是单靠这个 Python 仓库完成的，还依赖本机 OpenClaw / Feishu bridge。
+
+交付前必须确认：
+
+1. `~/.openclaw/openclaw.json` 已配置可用的 `channels.feishu`
+2. `openclaw status` 中 `Feishu` 为 `OK`
+3. `.openclaw/extensions/openclaw-lark` 已经是支持 `refresh_cover / refresh_graphics` 的新语义
+4. Chrome / Gemini 登录态可用（供 `gemini_web` 生图）
 
 ### 3. 公众号两阶段流程
 
@@ -169,6 +185,23 @@ browser_image:
 - 本机能打开 Chrome 并连接远程调试端口
 
 如果你是直接调用 `scripts/xhs_feishu_flow.py`，请把 `gemini_image.backend` 保持为 `gemini_web`。这样初稿和刷新封面图 / 刷新内容配图回流都会走同一条真实生图链路；只有你明确要实验 CLI 生图时，再单独切到 `gemini_cli`。历史卡片上的 `modify / rewrite` 仍然兼容，但新按钮已经改成刷新语义。
+
+如果你要走当前最稳的客户交付路径，优先使用“客户底图模式”：
+
+```bash
+.venv/bin/python scripts/xhs_feishu_flow.py \
+  --topic "测试｜客户底图模式终验" \
+  --audience "武汉家长" \
+  --base-image "/绝对路径/封面底图.jpg" \
+  --graphic-base-image "/绝对路径/正文配图1.jpg" \
+  --graphic-base-image "/绝对路径/正文配图2.jpg"
+```
+
+这条链路的特点：
+
+- 文案走真实文本模型
+- 封面和内容配图优先走本地底图叠版，不额外消耗 Gemini 生图额度
+- 飞书卡片上的 `刷新封面图 / 刷新内容配图 / 通过` 已做过真实闭环验证
 
 如果暂时还没打通文本模型，也可以直接注入本地生成好的素材包 JSON：
 
@@ -261,16 +294,19 @@ browser_image:
 
 ## 关键文件
 
-- [SKILL.md](/Users/lmsx/Documents/Playground/edu-media-openclaw/SKILL.md)
-- [config.example.yaml](/Users/lmsx/Documents/Playground/edu-media-openclaw/config/config.example.yaml)
-- [check_env.py](/Users/lmsx/Documents/Playground/edu-media-openclaw/scripts/check_env.py)
-- [wechat_generate.py](/Users/lmsx/Documents/Playground/edu-media-openclaw/scripts/wechat_generate.py)
-- [xhs_generate.py](/Users/lmsx/Documents/Playground/edu-media-openclaw/scripts/xhs_generate.py)
-- [smoke_test.py](/Users/lmsx/Documents/Playground/edu-media-openclaw/scripts/smoke_test.py)
+- [SKILL.md](/Users/lmsx/.config/superpowers/worktrees/edu-media-openclaw/codex-wuhan-xhs-workflow/SKILL.md)
+- [config.example.yaml](/Users/lmsx/.config/superpowers/worktrees/edu-media-openclaw/codex-wuhan-xhs-workflow/config/config.example.yaml)
+- [check_env.py](/Users/lmsx/.config/superpowers/worktrees/edu-media-openclaw/codex-wuhan-xhs-workflow/scripts/check_env.py)
+- [wechat_generate.py](/Users/lmsx/.config/superpowers/worktrees/edu-media-openclaw/codex-wuhan-xhs-workflow/scripts/wechat_generate.py)
+- [xhs_generate.py](/Users/lmsx/.config/superpowers/worktrees/edu-media-openclaw/codex-wuhan-xhs-workflow/scripts/xhs_generate.py)
+- [xhs_feishu_flow.py](/Users/lmsx/.config/superpowers/worktrees/edu-media-openclaw/codex-wuhan-xhs-workflow/scripts/xhs_feishu_flow.py)
+- [smoke_test.py](/Users/lmsx/.config/superpowers/worktrees/edu-media-openclaw/codex-wuhan-xhs-workflow/scripts/smoke_test.py)
 
 ## 验收建议
 
 - 先跑 `check_env.py`
 - 再跑 `smoke_test.py`
-- 然后用真实账号做一次公众号任务
-- 最后用真实主题做一次小红书素材包任务
+- 然后做一次真实 `xhs_feishu_flow.py` 初稿
+- 至少点一次飞书卡片上的 `刷新封面图` 或 `刷新内容配图`
+- 最后点一次 `通过`，确认最终稿卡片已回到飞书
+- 如果这次交付包含公众号，再额外补一次真实 draft push
