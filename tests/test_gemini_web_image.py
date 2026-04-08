@@ -66,6 +66,7 @@ class FakePage:
             on_click=lambda: self.image_mode_chip.__dict__.update({"_count": 1, "_visible": True})
         )
         self.prompt_box = FakeLocator(attrs={"placeholder": prompt_placeholder})
+        self.rich_prompt_box = FakeLocator(attrs={"contenteditable": "true"})
         self.style_button = FakeLocator()
         self.body = FakeLocator(
             text="이미지에 어울리는 스타일을 고르세요" if style_picker_active else ""
@@ -80,6 +81,10 @@ class FakePage:
             return self.drawer_button
         if selector == "textarea:visible":
             return self.prompt_box
+        if selector == '[role="textbox"]:visible':
+            return FakeLocator(count=0, visible=False)
+        if selector == '[contenteditable="true"]:visible':
+            return self.rich_prompt_box
         if selector == "body":
             return self.body
         raise AssertionError(f"unexpected selector: {selector}")
@@ -134,6 +139,14 @@ class GeminiWebImageTest(unittest.TestCase):
         prompt_box = gemini_web_image._wait_for_image_prompt_box(page, 1_000)
 
         self.assertIs(prompt_box, page.prompt_box)
+
+    def test_wait_for_image_prompt_box_falls_back_to_contenteditable_box(self) -> None:
+        page = FakePage(prompt_placeholder="")
+        page.prompt_box = FakeLocator(count=0, visible=False)
+
+        prompt_box = gemini_web_image._wait_for_image_prompt_box(page, 1_000)
+
+        self.assertIs(prompt_box, page.rich_prompt_box)
 
     def test_ensure_image_style_clicks_default_style_when_style_picker_visible(self) -> None:
         page = FakePage(style_picker_active=True)

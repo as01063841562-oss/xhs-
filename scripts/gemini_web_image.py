@@ -374,13 +374,25 @@ def _wait_for_image_prompt_box(page, timeout_ms: int):
     last_error: Exception | None = None
     while time.time() < deadline:
         try:
-            textarea = page.locator("textarea:visible")
-            if textarea.count() > 0 and textarea.first.is_visible():
-                prompt_box = textarea.first
+            candidates = [
+                page.locator("textarea:visible"),
+                page.locator('[role="textbox"]:visible'),
+                page.locator('[contenteditable="true"]:visible'),
+            ]
+            for locator in candidates:
+                if locator.count() == 0 or not locator.first.is_visible():
+                    continue
+                prompt_box = locator.first
                 placeholder = (prompt_box.get_attribute("placeholder") or "").strip()
+                aria_label = (prompt_box.get_attribute("aria-label") or "").strip()
+                contenteditable = (prompt_box.get_attribute("contenteditable") or "").strip().lower()
                 if placeholder and not re.search(r"Gemini에게 물어보기", placeholder, re.I):
                     return prompt_box
                 if re.search(r"(이미지|Describe|Prompt|설명)", placeholder, re.I):
+                    return prompt_box
+                if re.search(r"(이미지|Describe|Prompt|설명)", aria_label, re.I):
+                    return prompt_box
+                if contenteditable == "true":
                     return prompt_box
         except Exception as exc:  # pragma: no cover - best effort
             last_error = exc
