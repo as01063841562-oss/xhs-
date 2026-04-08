@@ -324,6 +324,92 @@ def _click_if_visible(page, locators, timeout_ms: int) -> bool:
     return False
 
 
+def _image_mode_active(page) -> bool:
+    """判断 Gemini 网页是否已经切到图片生成模式。"""
+    active_chip = page.get_by_role(
+        "button",
+        name=re.compile(r"이미지 만들기 선택 해제|Create image deselect", re.I),
+    )
+    try:
+        return active_chip.count() > 0 and active_chip.first.is_visible()
+    except Exception:
+        return False
+
+
+def _ensure_image_mode(page, timeout_ms: int) -> None:
+    """打开工具抽屉并切换到图片生成模式。"""
+    if _image_mode_active(page):
+        return
+
+    deadline = time.time() + timeout_ms / 1000
+    last_error: Exception | None = None
+    drawer_button = page.locator("button.toolbox-drawer-button-with-label").first
+    while time.time() < deadline:
+        try:
+            if _image_mode_active(page):
+                return
+
+            if drawer_button.get_attribute("aria-expanded") != "true":
+                drawer_button.click(timeout=timeout_ms, force=True)
+                page.wait_for_timeout(500)
+
+            mode_candidates = [
+                page.get_by_role("menuitemcheckbox", name=re.compile(r"이미지 만들기|Create image", re.I)),
+                page.get_by_role("button", name=re.compile(r"🖼️\s*이미지 만들기|이미지 만들기|Create image", re.I)),
+                page.get_by_text(re.compile(r"🖼️\s*이미지 만들기|이미지 만들기|Create image", re.I)),
+            ]
+            _first_clickable(page, mode_candidates, timeout_ms)
+            page.wait_for_timeout(1_000)
+            if _image_mode_active(page):
+                return
+        except Exception as exc:  # pragma: no cover - best effort
+            last_error = exc
+        page.wait_for_timeout(1_000)
+    raise GeminiWebImageError(f"无法切换到 Gemini 图片模式: {last_error}")
+
+
+def _wait_for_image_prompt_box(page, timeout_ms: int):
+    """等待图片模式的提示词输入框出现。"""
+    deadline = time.time() + timeout_ms / 1000
+    last_error: Exception | None = None
+    while time.time() < deadline:
+        try:
+            textarea = page.locator("textarea:visible")
+            if textarea.count() > 0 and textarea.first.is_visible():
+                prompt_box = textarea.first
+                placeholder = (prompt_box.get_attribute("placeholder") or "").strip()
+                if placeholder and not re.search(r"Gemini에게 물어보기", placeholder, re.I):
+                    return prompt_box
+                if re.search(r"(이미지|Describe|Prompt|설명)", placeholder, re.I):
+                    return prompt_box
+        except Exception as exc:  # pragma: no cover - best effort
+            last_error = exc
+        time.sleep(0.5)
+    raise GeminiWebImageError(f"找不到 Gemini 图片描述输入框: {last_error}")
+
+
+def _style_picker_visible(page) -> bool:
+    """判断 Gemini 是否仍停留在图片风格选择界面。"""
+    try:
+        body_text = page.locator("body").inner_text()
+    except Exception:
+        return False
+    return "이미지에 어울리는 스타일을 고르세요" in body_text
+
+
+def _ensure_image_style(page, timeout_ms: int, style_name: str = "천연색") -> None:
+    """在图片模式下选择一个默认风格，触发提示词输入框出现。"""
+    if not _style_picker_visible(page):
+        return
+
+    style_candidates = [
+        page.get_by_role("button", name=re.compile(re.escape(style_name), re.I)),
+        page.get_by_text(re.compile(re.escape(style_name), re.I)),
+    ]
+    _first_clickable(page, style_candidates, timeout_ms)
+    page.wait_for_timeout(1_000)
+
+
 def _send_prompt(page, prompt_box, timeout_ms: int = 15_000) -> bool:
     """把提示词发送给 Gemini。
 
@@ -398,33 +484,9 @@ def render_gemini_web_image(
         browser = p.chromium.connect_over_cdp(f"http://127.0.0.1:{port}")
         page = _get_browser_page(browser, gemini_url)
 
-        mode_clicked = _click_if_visible(
-            page,
-            [
-                page.get_by_role("button", name="🖼️ 이미지 만들기"),
-                page.get_by_role("button", name=re.compile(r"이미지 만들기|制作图片|创建图片|Create image", re.I)),
-                page.get_by_text(re.compile(r"이미지 만들기|制作图片|创建图片|Create image", re.I)),
-            ],
-            10_000,
-        )
-        if mode_clicked:
-            page.wait_for_timeout(2_000)
-
-        prompt_box = None
-        textbox_candidates = [
-            page.get_by_role("textbox", name=re.compile(r"Gemini.*(프롬프트|提示词).*输入|프롬프트 입력|提示词输入|Prompt", re.I)),
-            page.locator("textarea:visible").first,
-            page.locator('[contenteditable="true"]:visible').first,
-        ]
-        for locator in textbox_candidates:
-            try:
-                if locator.count() > 0 and locator.is_visible():
-                    prompt_box = locator
-                    break
-            except Exception:
-                continue
-        if prompt_box is None:
-            raise GeminiWebImageError("找不到 Gemini 提示词输入框")
+        _ensure_image_mode(page, page_timeout * 1000)
+        _ensure_image_style(page, page_timeout * 1000)
+        prompt_box = _wait_for_image_prompt_box(page, page_timeout * 1000)
 
         prompt_box.fill(prompt)
         page.wait_for_timeout(800)

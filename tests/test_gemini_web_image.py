@@ -1,0 +1,147 @@
+from __future__ import annotations
+
+import re
+import sys
+import unittest
+from pathlib import Path
+
+SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
+if str(SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(SCRIPT_DIR))
+
+import gemini_web_image
+
+
+class FakeLocator:
+    def __init__(
+        self,
+        *,
+        count: int = 1,
+        visible: bool = True,
+        attrs: dict[str, str] | None = None,
+        text: str = "",
+        on_click=None,
+    ) -> None:
+        self._count = count
+        self._visible = visible
+        self._attrs = dict(attrs or {})
+        self._text = text
+        self.click_count = 0
+        self._on_click = on_click
+        self.first = self
+
+    def count(self) -> int:
+        return self._count
+
+    def is_visible(self) -> bool:
+        return self._visible
+
+    def click(self, *args, **kwargs) -> None:
+        del args, kwargs
+        self.click_count += 1
+        if self._on_click:
+            self._on_click()
+
+    def get_attribute(self, name: str) -> str | None:
+        return self._attrs.get(name)
+
+    def inner_text(self) -> str:
+        return self._text
+
+    def set_attribute(self, name: str, value: str) -> None:
+        self._attrs[name] = value
+
+
+class FakePage:
+    def __init__(
+        self,
+        *,
+        image_mode_active: bool = False,
+        prompt_placeholder: str = "이미지를 설명하세요",
+        style_picker_active: bool = False,
+    ) -> None:
+        self.drawer_button = FakeLocator(attrs={"aria-expanded": "false"})
+        self.image_mode_chip = FakeLocator(count=1 if image_mode_active else 0)
+        self.image_mode_menu_item = FakeLocator(
+            on_click=lambda: self.image_mode_chip.__dict__.update({"_count": 1, "_visible": True})
+        )
+        self.prompt_box = FakeLocator(attrs={"placeholder": prompt_placeholder})
+        self.style_button = FakeLocator()
+        self.body = FakeLocator(
+            text="이미지에 어울리는 스타일을 고르세요" if style_picker_active else ""
+        )
+        self.wait_calls: list[int] = []
+        self.locator_calls: list[str] = []
+        self.role_calls: list[tuple[str, str | None]] = []
+
+    def locator(self, selector: str) -> FakeLocator:
+        self.locator_calls.append(selector)
+        if selector == "button.toolbox-drawer-button-with-label":
+            return self.drawer_button
+        if selector == "textarea:visible":
+            return self.prompt_box
+        if selector == "body":
+            return self.body
+        raise AssertionError(f"unexpected selector: {selector}")
+
+    def get_by_role(self, role: str, name=None) -> FakeLocator:
+        self.role_calls.append((role, name.pattern if hasattr(name, "pattern") else str(name) if name is not None else None))
+        if role == "button" and isinstance(name, re.Pattern) and "이미지 만들기 선택 해제" in name.pattern:
+            return self.image_mode_chip
+        if role == "button" and isinstance(name, re.Pattern) and "천연색" in name.pattern:
+            return self.style_button
+        if role == "menuitemcheckbox" and isinstance(name, re.Pattern) and "이미지 만들기" in name.pattern:
+            return self.image_mode_menu_item
+        if role == "button" and isinstance(name, re.Pattern) and "이미지 만들기" in name.pattern:
+            return self.image_mode_menu_item
+        if role == "button" and isinstance(name, re.Pattern) and "Create image" in name.pattern:
+            return self.image_mode_menu_item
+        raise AssertionError(f"unexpected role request: role={role!r}, name={name!r}")
+
+    def get_by_text(self, text):
+        pattern = text.pattern if hasattr(text, "pattern") else str(text)
+        if "이미지 만들기" in pattern or "Create image" in pattern:
+            return self.image_mode_menu_item
+        if "천연색" in pattern:
+            return self.style_button
+        raise AssertionError(f"unexpected text request: {text!r}")
+
+    def wait_for_timeout(self, ms: int) -> None:
+        self.wait_calls.append(ms)
+
+
+class GeminiWebImageTest(unittest.TestCase):
+    def test_ensure_image_mode_opens_drawer_and_clicks_image_tile(self) -> None:
+        page = FakePage(image_mode_active=False)
+
+        gemini_web_image._ensure_image_mode(page, 2_000)
+
+        self.assertEqual(page.drawer_button.click_count, 1)
+        self.assertEqual(page.image_mode_menu_item.click_count, 1)
+        self.assertGreaterEqual(len(page.wait_calls), 1)
+
+    def test_ensure_image_mode_is_noop_when_already_active(self) -> None:
+        page = FakePage(image_mode_active=True)
+
+        gemini_web_image._ensure_image_mode(page, 2_000)
+
+        self.assertEqual(page.drawer_button.click_count, 0)
+        self.assertEqual(page.image_mode_menu_item.click_count, 0)
+
+    def test_wait_for_image_prompt_box_returns_prompt_textarea(self) -> None:
+        page = FakePage(prompt_placeholder="이미지를 설명하세요")
+
+        prompt_box = gemini_web_image._wait_for_image_prompt_box(page, 1_000)
+
+        self.assertIs(prompt_box, page.prompt_box)
+
+    def test_ensure_image_style_clicks_default_style_when_style_picker_visible(self) -> None:
+        page = FakePage(style_picker_active=True)
+
+        gemini_web_image._ensure_image_style(page, 2_000)
+
+        self.assertEqual(page.style_button.click_count, 1)
+
+
+if __name__ == "__main__":
+    unittest.main()

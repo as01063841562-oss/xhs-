@@ -64,9 +64,15 @@ def review_state(
     image_keys: list[str] | None = None,
     topic: str = "二次函数提分攻略",
     topic_data_style: str | None = None,
+    image_templates: dict[str, str] | None = None,
 ) -> dict[str, object]:
     slide_paths = slide_paths or [str(run_dir / "cover.png")]
     image_keys = image_keys or ["img_cover_old"]
+    if image_templates is None:
+        image_templates = {
+            "cover_template_key": "parent_consult",
+            "graphics_template_key": "study_plan",
+        }
     return {
         "status": "waiting_review",
         "topic": topic,
@@ -76,6 +82,7 @@ def review_state(
         "payload": payload,
         "slide_paths": list(slide_paths),
         "image_keys": list(image_keys),
+        "image_templates": dict(image_templates),
         "cover_path": slide_paths[0],
         "image_key": image_keys[0],
         "current_review_message_id": message_id,
@@ -94,24 +101,22 @@ class XhsFeishuFlowTest(unittest.TestCase):
 
         with TemporaryDirectory() as tmp:
             run_dir = Path(tmp)
-            rendered_topics: list[dict[str, object]] = []
+            generated_prompts: list[str] = []
 
-            def fake_render_image(
-                topic: dict[str, object],
-                output_path: Path | str,
-                width: int = 1080,
-                height: int = 1440,
+            def fake_generate_image(
+                prompt: str,
+                output_path: Path | str | None = None,
+                config: dict[str, object] | None = None,
+                allow_placeholder: bool = True,
             ) -> Path:
-                del width, height
-                rendered_topics.append(dict(topic))
+                del config, allow_placeholder
+                generated_prompts.append(prompt)
                 target = Path(output_path)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(b"png")
                 return target
 
-            with patch.object(xhs_feishu_flow, "render_image", side_effect=fake_render_image) as mock_render, patch.object(
-                xhs_feishu_flow, "render_topic_images", return_value=[run_dir / "slides" / "slide_1.png"]
-            ) as mock_render_topic_images:
+            with patch.object(xhs_feishu_flow, "generate_image", side_effect=fake_generate_image) as mock_generate_image:
                 images = xhs_feishu_flow.generate_slide_images(
                     run_dir=run_dir,
                     payload=payload,
@@ -122,12 +127,47 @@ class XhsFeishuFlowTest(unittest.TestCase):
                 )
 
         self.assertEqual(len(images), 3)
-        self.assertEqual([topic["style"] for topic in rendered_topics], ["promo_cover", "info_card", "info_card"])
-        self.assertEqual(rendered_topics[0]["title"], payload["cover_title"])
-        self.assertEqual(rendered_topics[1]["title"], payload["variants"][0]["title"])
-        self.assertEqual(rendered_topics[2]["title"], payload["variants"][2]["title"])
-        self.assertEqual(mock_render.call_count, 3)
-        mock_render_topic_images.assert_not_called()
+        self.assertEqual(mock_generate_image.call_count, 3)
+        self.assertEqual(
+            [path.name for path in images],
+            ["slide_1.png", "slide_2.png", "slide_3.png"],
+        )
+        self.assertIn("真实摄影感底图", generated_prompts[0])
+        self.assertIn(payload["cover_title"], generated_prompts[0])
+        self.assertIn("真实课堂或咨询场景打底", generated_prompts[1])
+        self.assertIn(str(payload["variants"][0]["title"]), generated_prompts[1])
+        self.assertIn("真实校区环境、老师团队、家长沟通或教学现场照片打底", generated_prompts[2])
+        self.assertIn(str(payload["variants"][1]["title"]), generated_prompts[2])
+
+    def test_generate_slide_images_raises_when_prompt_templates_fail(self) -> None:
+        payload = sample_payload()
+        topic_data = sample_preset_topic_data()
+
+        with TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            with patch.object(
+                xhs_feishu_flow,
+                "_render_prompt_slide_set",
+                side_effect=RuntimeError("prompt backend failed"),
+            ), patch.object(
+                xhs_feishu_flow,
+                "render_image",
+            ) as mock_render_image:
+                with self.assertRaises(RuntimeError):
+                    xhs_feishu_flow.generate_slide_images(
+                        run_dir=run_dir,
+                        payload=payload,
+                        topic_data=topic_data,
+                        config={},
+                        dry_run=False,
+                        skip_image=False,
+                        image_templates={
+                            "cover_template_key": "parent_consult",
+                            "graphics_template_key": "study_plan",
+                        },
+                    )
+
+        mock_render_image.assert_not_called()
 
     def test_main_accepts_refresh_actions_in_resume_mode(self) -> None:
         for action in ("refresh_cover", "refresh_graphics"):
@@ -196,6 +236,7 @@ class XhsFeishuFlowTest(unittest.TestCase):
             refreshed_cover = run_dir / "cover_refresh_1.png"
             feishu = MagicMock()
             feishu.send_review_card.return_value = "msg_cover_refresh_1"
+            generated_prompts: list[str] = []
 
             def fake_generate_image(
                 prompt: str,
@@ -203,7 +244,8 @@ class XhsFeishuFlowTest(unittest.TestCase):
                 config: dict[str, object] | None = None,
                 allow_placeholder: bool = True,
             ) -> Path:
-                del prompt, config, allow_placeholder
+                del config, allow_placeholder
+                generated_prompts.append(prompt)
                 target = Path(output_path or refreshed_cover)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(b"png")
@@ -216,8 +258,6 @@ class XhsFeishuFlowTest(unittest.TestCase):
             ), patch.object(
                 xhs_feishu_flow, "generate_image", side_effect=fake_generate_image
             ) as mock_generate_image, patch.object(
-                xhs_feishu_flow, "render_image"
-            ) as mock_render_image, patch.object(
                 xhs_feishu_flow, "upload_slide_images", return_value=["img_cover_new"]
             ) as mock_upload, patch.object(
                 xhs_feishu_flow, "FeishuClient", return_value=feishu
@@ -243,10 +283,11 @@ class XhsFeishuFlowTest(unittest.TestCase):
         self.assertEqual(state["review_action_mode"], "image_refresh")
         self.assertEqual(state["cover_refresh_count"], 1)
         self.assertIsNone(state.get("pending_revision_mode"))
+        self.assertEqual(mock_generate_image.call_count, 1)
+        self.assertIn("真实摄影感底图", generated_prompts[0])
+        self.assertIn(payload["cover_title"], generated_prompts[0])
         mock_generate_payload.assert_not_called()
         mock_send_revision.assert_not_called()
-        mock_generate_image.assert_called_once()
-        mock_render_image.assert_not_called()
         mock_upload.assert_called_once()
         feishu.send_review_card.assert_called_once()
 
@@ -284,11 +325,11 @@ class XhsFeishuFlowTest(unittest.TestCase):
             )
             feishu = MagicMock()
             feishu.send_review_card.return_value = "msg_cover_refresh_2"
-            captured_topics: list[dict[str, object]] = []
+            captured_prompts: list[str] = []
 
-            def fake_render_image(topic: dict[str, object], output_path: Path | str, width: int = 1080, height: int = 1440) -> Path:
-                del width, height
-                captured_topics.append(dict(topic))
+            def fake_generate_image(prompt: str, output_path: Path | str | None = None, config: dict[str, object] | None = None, allow_placeholder: bool = True) -> Path:
+                del config, allow_placeholder
+                captured_prompts.append(prompt)
                 target = Path(output_path)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(b"png")
@@ -299,10 +340,8 @@ class XhsFeishuFlowTest(unittest.TestCase):
             ), patch.object(
                 xhs_feishu_flow, "_match_topic_data", return_value=topic_data
             ), patch.object(
-                xhs_feishu_flow, "render_image", side_effect=fake_render_image
+                xhs_feishu_flow, "generate_image", side_effect=fake_generate_image
             ) as mock_render_image, patch.object(
-                xhs_feishu_flow, "generate_image"
-            ) as mock_generate_image, patch.object(
                 xhs_feishu_flow, "upload_slide_images", return_value=["img_cover_new"]
             ), patch.object(
                 xhs_feishu_flow, "FeishuClient", return_value=feishu
@@ -317,16 +356,9 @@ class XhsFeishuFlowTest(unittest.TestCase):
 
         self.assertEqual(result["status"], "waiting_review")
         self.assertEqual(mock_render_image.call_count, 1)
-        self.assertEqual(captured_topics[0]["title"], payload["cover_title"])
-        self.assertEqual(captured_topics[0]["subtitle"], payload["variants"][0]["angle"])
-        self.assertEqual(
-            captured_topics[0]["selling_points"],
-            ["修改后的第一卖点", "修改后的第二卖点", "修改后的第三卖点"],
-        )
-        self.assertEqual(captured_topics[0]["style"], "promo_cover")
-        self.assertEqual(captured_topics[0]["original_style"], topic_data["style"])
-        self.assertEqual(captured_topics[0]["tags"], payload["hashtags"])
-        mock_generate_image.assert_not_called()
+        self.assertIn("修改版｜当前封面标题", captured_prompts[0])
+        self.assertIn("真实摄影感底图", captured_prompts[0])
+        self.assertIn("家长最关心的方案和结果", captured_prompts[0])
 
     def test_resume_review_action_refresh_cover_blocks_inconsistent_multi_image_state(self) -> None:
         payload = sample_payload()
@@ -374,6 +406,43 @@ class XhsFeishuFlowTest(unittest.TestCase):
         mock_upload.assert_not_called()
         mock_feishu.assert_not_called()
 
+    def test_resume_review_action_refresh_cover_blocks_inverse_inconsistent_multi_image_state(self) -> None:
+        payload = sample_payload()
+        with TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            state = review_state(
+                run_dir,
+                payload,
+                slide_paths=[str(run_dir / "slides" / "slide_1.png")],
+                image_keys=["img_cover_old", "img_graphic_old_1", "img_graphic_old_2"],
+                topic_data_style="info_card",
+            )
+
+            with patch.object(xhs_feishu_flow, "load_review_state", return_value=(run_dir, state)), patch.object(
+                xhs_feishu_flow, "load_config", return_value={}
+            ), patch.object(
+                xhs_feishu_flow, "generate_image"
+            ) as mock_generate_image, patch.object(
+                xhs_feishu_flow, "render_image"
+            ) as mock_render_image, patch.object(
+                xhs_feishu_flow, "upload_slide_images"
+            ) as mock_upload, patch.object(
+                xhs_feishu_flow, "FeishuClient"
+            ) as mock_feishu, patch.object(
+                xhs_feishu_flow, "save_review_state"
+            ), patch.object(
+                xhs_feishu_flow, "_save_result"
+            ):
+                result = xhs_feishu_flow.resume_review_action("refresh_cover", "msg_current")
+
+        self.assertEqual(result["status"], "blocked")
+        self.assertEqual(result["reason"], "inconsistent_review_state")
+        self.assertEqual(state["current_review_message_id"], "msg_current")
+        mock_generate_image.assert_not_called()
+        mock_render_image.assert_not_called()
+        mock_upload.assert_not_called()
+        mock_feishu.assert_not_called()
+
     def test_resume_review_action_refresh_graphics_only_updates_graphics_lane(self) -> None:
         payload = sample_payload()
         topic_data = {
@@ -397,9 +466,16 @@ class XhsFeishuFlowTest(unittest.TestCase):
             )
             feishu = MagicMock()
             feishu.send_review_card.return_value = "msg_graphics_refresh_1"
+            generated_prompts: list[str] = []
 
-            def fake_render_image(topic: dict[str, object], output_path: Path | str, width: int = 1080, height: int = 1440) -> Path:
-                del topic, width, height
+            def fake_generate_image(
+                prompt: str,
+                output_path: Path | str | None = None,
+                config: dict[str, object] | None = None,
+                allow_placeholder: bool = True,
+            ) -> Path:
+                del config, allow_placeholder
+                generated_prompts.append(prompt)
                 target = Path(output_path)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(b"png")
@@ -410,9 +486,7 @@ class XhsFeishuFlowTest(unittest.TestCase):
             ), patch.object(
                 xhs_feishu_flow, "_match_topic_data", return_value=topic_data
             ), patch.object(
-                xhs_feishu_flow, "render_image", side_effect=fake_render_image
-            ) as mock_render_image, patch.object(
-                xhs_feishu_flow, "generate_image"
+                xhs_feishu_flow, "generate_image", side_effect=fake_generate_image
             ) as mock_generate_image, patch.object(
                 xhs_feishu_flow, "upload_slide_images", return_value=["img_graphic_new_1", "img_graphic_new_2"]
             ) as mock_upload, patch.object(
@@ -446,8 +520,11 @@ class XhsFeishuFlowTest(unittest.TestCase):
         self.assertIsNone(state.get("pending_revision_mode"))
         mock_generate_payload.assert_not_called()
         mock_send_revision.assert_not_called()
-        self.assertEqual(mock_render_image.call_count, 2)
-        mock_generate_image.assert_not_called()
+        self.assertEqual(mock_generate_image.call_count, 2)
+        self.assertIn("真实课堂或咨询场景打底", generated_prompts[0])
+        self.assertIn("二次函数想提分，先抓这三步", generated_prompts[0])
+        self.assertIn("真实校区环境、老师团队、家长沟通或教学现场照片打底", generated_prompts[1])
+        self.assertIn("家长最该盯住的不是刷题量", generated_prompts[1])
         mock_upload.assert_called_once()
         feishu.send_review_card.assert_called_once()
 
@@ -465,6 +542,7 @@ class XhsFeishuFlowTest(unittest.TestCase):
                 ],
                 image_keys=["img_cover_old", "img_graphic_old_1", "img_graphic_old_2"],
                 topic_data_style=None,
+                image_templates={},
             )
 
             with patch.object(xhs_feishu_flow, "load_review_state", return_value=(run_dir, state)), patch.object(
@@ -497,7 +575,7 @@ class XhsFeishuFlowTest(unittest.TestCase):
         payload = sample_payload()
         with TemporaryDirectory() as tmp:
             run_dir = Path(tmp)
-            state = review_state(run_dir, payload, topic_data_style=None)
+            state = review_state(run_dir, payload, topic_data_style=None, image_templates={})
 
             with patch.object(xhs_feishu_flow, "load_review_state", return_value=(run_dir, state)), patch.object(
                 xhs_feishu_flow, "load_config", return_value={}
@@ -636,8 +714,16 @@ class XhsFeishuFlowTest(unittest.TestCase):
             feishu = MagicMock()
             feishu.send_review_card.return_value = "msg_modify_preset_1"
 
-            def fake_render_image(topic: dict[str, object], output_path: Path | str, width: int = 1080, height: int = 1440) -> Path:
-                del topic, width, height
+            generated_prompts: list[str] = []
+
+            def fake_generate_image(
+                prompt: str,
+                output_path: Path | str | None = None,
+                config: dict[str, object] | None = None,
+                allow_placeholder: bool = True,
+            ) -> Path:
+                del config, allow_placeholder
+                generated_prompts.append(prompt)
                 target = Path(output_path)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(b"png")
@@ -650,14 +736,10 @@ class XhsFeishuFlowTest(unittest.TestCase):
             ), patch.object(
                 xhs_feishu_flow, "_match_topic_data", return_value=topic_data
             ), patch.object(
-                xhs_feishu_flow, "render_image", side_effect=fake_render_image
-            ) as mock_render_image, patch.object(
+                xhs_feishu_flow, "generate_image", side_effect=fake_generate_image
+            ) as mock_generate_image, patch.object(
                 xhs_feishu_flow, "upload_slide_images", return_value=["img_cover_new", "img_graphic_new_1", "img_graphic_new_2"]
             ) as mock_upload_slides, patch.object(
-                xhs_feishu_flow, "generate_cover_art", return_value=run_dir / "legacy_cover.png"
-            ) as mock_generate_cover, patch.object(
-                xhs_feishu_flow, "upload_cover_image", return_value="img_legacy_cover"
-            ) as mock_upload_cover, patch.object(
                 xhs_feishu_flow, "FeishuClient", return_value=feishu
             ), patch.object(
                 xhs_feishu_flow, "save_review_state"
@@ -687,9 +769,57 @@ class XhsFeishuFlowTest(unittest.TestCase):
         self.assertEqual(state["current_review_message_id"], "msg_modify_preset_1")
         self.assertEqual(state["review_action_mode"], "revision")
         self.assertEqual(feishu.send_review_card.call_args.kwargs["image_key"], state["image_keys"])
-        self.assertEqual(mock_render_image.call_count, 3)
+        self.assertEqual(mock_generate_image.call_count, 3)
+        self.assertIn("修改版｜多图审核标题", generated_prompts[0])
+        self.assertIn("真实摄影感底图", generated_prompts[0])
+        self.assertIn("修改版图1", generated_prompts[1])
+        self.assertIn("修改版图2", generated_prompts[2])
         mock_upload_slides.assert_called_once()
-        mock_generate_cover.assert_not_called()
+
+    def test_resume_review_action_modify_blocks_legacy_multi_image_state_without_templates(self) -> None:
+        payload = sample_payload()
+        revised_payload = sample_payload()
+        with TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            state = review_state(
+                run_dir,
+                payload,
+                slide_paths=[
+                    str(run_dir / "slides" / "slide_1.png"),
+                    str(run_dir / "slides" / "slide_2.png"),
+                    str(run_dir / "slides" / "slide_3.png"),
+                ],
+                image_keys=["img_cover_old", "img_graphic_old_1", "img_graphic_old_2"],
+                topic_data_style="info_card",
+                image_templates={},
+            )
+
+            with patch.object(xhs_feishu_flow, "load_review_state", return_value=(run_dir, state)), patch.object(
+                xhs_feishu_flow, "load_config", return_value={}
+            ), patch.object(
+                xhs_feishu_flow, "generate_xhs_payload", return_value=revised_payload
+            ), patch.object(
+                xhs_feishu_flow, "save_review_state"
+            ), patch.object(
+                xhs_feishu_flow, "_save_result"
+            ), patch.object(
+                xhs_feishu_flow, "FeishuClient"
+            ) as mock_feishu, patch.object(
+                xhs_feishu_flow, "upload_slide_images"
+            ) as mock_upload_slides, patch.object(
+                xhs_feishu_flow, "upload_cover_image"
+            ) as mock_upload_cover:
+                result = xhs_feishu_flow.resume_review_action(
+                    "modify",
+                    "msg_current",
+                    revision_notes="改一下",
+                )
+
+        self.assertEqual(result["status"], "blocked")
+        self.assertEqual(result["reason"], "missing_image_templates_metadata")
+        self.assertEqual(state["current_review_message_id"], "msg_current")
+        mock_feishu.assert_not_called()
+        mock_upload_slides.assert_not_called()
         mock_upload_cover.assert_not_called()
 
     def test_main_rejects_refresh_actions_in_request_edit_mode(self) -> None:
