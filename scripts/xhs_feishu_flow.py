@@ -393,6 +393,8 @@ def request_revision_notes(
     config_path: str | None = None,
 ) -> dict[str, Any]:
     """将当前审核卡切换为“修改说明卡”，等待用户补充修改意见。"""
+    if action not in {"modify", "rewrite"}:
+        raise ValueError("request_revision_notes 仅支持 modify/rewrite")
     run_dir, state = load_review_state(message_id)
     current_message_id = state.get("current_review_message_id")
     if current_message_id != message_id:
@@ -450,6 +452,175 @@ def _match_topic_data(topic: str) -> dict[str, Any] | None:
     if matched:
         print(f"  📚 匹配到预设选题: {matched['title']} (style={matched['style']})")
     return matched
+
+
+def _review_card_title(payload: dict[str, Any]) -> str:
+    return f"🎨 小红书笔记审核 — {payload['cover_title']}"
+
+
+def _review_card_tags(payload: dict[str, Any]) -> str:
+    return " ".join(f"#{t}" for t in payload["hashtags"][:6])
+
+
+def _normalized_slide_paths(run_dir: Path, state: dict[str, Any]) -> list[str]:
+    slide_paths = [str(path) for path in state.get("slide_paths") or [] if path]
+    if slide_paths:
+        return slide_paths
+    cover_path = state.get("cover_path")
+    if cover_path:
+        return [str(cover_path)]
+    return [str(run_dir / "cover.png")]
+
+
+def _normalized_image_keys(state: dict[str, Any]) -> list[str]:
+    image_keys = [str(key) for key in state.get("image_keys") or [] if key]
+    if image_keys:
+        return image_keys
+    image_key = state.get("image_key")
+    if image_key:
+        return [str(image_key)]
+    return []
+
+
+def _refreshed_artifact_path(
+    current_path: str | Path | None,
+    fallback_path: Path,
+    refresh_index: int,
+) -> Path:
+    base_path = Path(current_path) if current_path else fallback_path
+    suffix = base_path.suffix or ".png"
+    return base_path.with_name(f"{base_path.stem}_refresh_{refresh_index}{suffix}")
+
+
+def _build_preset_slide_topics(topic_data: dict[str, Any]) -> list[dict[str, Any]]:
+    cover_topic = dict(topic_data)
+    cover_topic["original_style"] = topic_data.get("style", "info_card")
+    cover_topic["style"] = "promo_cover"
+    cta_topic = {
+        "title": topic_data["title"],
+        "subtitle": "收藏+关注·获取更多干货",
+        "style": "info_card",
+        "tags": topic_data.get("tags", []),
+        "key_points": [
+            "✅ 收藏本笔记，考前随时翻看",
+            "✅ 关注账号，每日更新武汉升学干货",
+            "✅ 评论区留言，免费获取完整资料",
+            "✅ 分享给其他家长，一起备战中考",
+            "✅ 点赞支持，激励我们持续更新",
+        ],
+    }
+    return [cover_topic, dict(topic_data), cta_topic]
+
+
+def _render_refreshed_cover(
+    run_dir: Path,
+    payload: dict[str, Any],
+    topic_data: dict[str, Any] | None,
+    config: dict[str, Any],
+    dry_run: bool,
+    skip_image: bool,
+    refresh_index: int,
+    current_cover_path: str | None,
+) -> Path:
+    target_path = _refreshed_artifact_path(
+        current_cover_path,
+        run_dir / "cover.png",
+        refresh_index,
+    )
+    if topic_data:
+        return render_image(_build_preset_slide_topics(topic_data)[0], target_path)
+    if skip_image or dry_run:
+        _generate_placeholder(target_path, payload.get("cover_prompt", ""))
+        return target_path
+    return generate_image(
+        payload["cover_prompt"],
+        target_path,
+        config,
+        allow_placeholder=False,
+    )
+
+
+def _render_refreshed_graphics(
+    run_dir: Path,
+    topic_data: dict[str, Any],
+    refresh_index: int,
+    current_graphic_paths: list[str],
+) -> list[Path]:
+    slide_topics = _build_preset_slide_topics(topic_data)[1:]
+    if not current_graphic_paths:
+        current_graphic_paths = [
+            str(run_dir / "slides" / "slide_2.png"),
+            str(run_dir / "slides" / "slide_3.png"),
+        ]
+    if len(current_graphic_paths) > len(slide_topics):
+        raise ValueError("当前任务的独立内容配图数量超出可刷新范围")
+
+    refreshed_paths: list[Path] = []
+    for index, topic in enumerate(slide_topics[: len(current_graphic_paths)]):
+        fallback = run_dir / "slides" / f"slide_{index + 2}.png"
+        target_path = _refreshed_artifact_path(
+            current_graphic_paths[index] if index < len(current_graphic_paths) else None,
+            fallback,
+            refresh_index,
+        )
+        refreshed_paths.append(render_image(topic, target_path))
+    return refreshed_paths
+
+
+def _send_review_card(
+    payload: dict[str, Any],
+    image_keys: list[str],
+    note_id: str,
+    config: dict[str, Any],
+    dry_run: bool,
+    message_suffix: str,
+) -> str:
+    card_content = format_card_content(payload, 0)
+    tags_str = _review_card_tags(payload)
+    if dry_run:
+        message_id = f"msg_{message_suffix}"
+        print("  ⏭️  dry-run 模式，跳过发送新审核卡")
+        print(f"  新卡片内容:\n{card_content}")
+        return message_id
+
+    feishu = FeishuClient(config)
+    message_id = feishu.send_review_card(
+        image_key=image_keys,
+        title=_review_card_title(payload),
+        content=card_content,
+        tags=tags_str,
+        note_id=note_id,
+    )
+    print(f"  ✅ 新审核卡片已发送: {message_id}")
+    print("  ⏸️  已停在新初稿阶段，等你继续点通过或刷新图片。")
+    return message_id
+
+
+def _blocked_image_refresh(
+    run_dir: Path,
+    state: dict[str, Any],
+    action: str,
+    reason: str,
+    message: str,
+) -> dict[str, Any]:
+    print(f"  ⚠️  {message}")
+    state["review_action_mode"] = "image_refresh"
+    state["last_action"] = action
+    state["pending_revision_mode"] = None
+    save_review_state(run_dir, state)
+
+    result = {
+        "status": "blocked",
+        "reason": reason,
+        "message": message,
+        "task_dir": str(run_dir),
+        "steps": {
+            "action": action,
+            "reason": reason,
+        },
+    }
+    _save_result(run_dir, result)
+    return result
 
 
 def run_flow(
@@ -557,7 +728,7 @@ def run_flow(
                 note_id=note_id,
             )
             print(f"  ✅ 审核卡片已发送: {message_id} ({len(image_keys)}图)")
-            print("  ⏸️  已暂停在初稿审核阶段，等你点通过/修改/重写后再继续。")
+            print("  ⏸️  已暂停在初稿审核阶段，等你点通过或刷新图片后再继续。")
         except Exception as e:
             print(f"  ❌ 发送审核卡片失败: {e}")
             result["status"] = "failed"
@@ -610,7 +781,7 @@ def resume_review_action(
     revision_notes: str | None = None,
     revision_scope: str | None = None,
 ) -> dict[str, Any]:
-    """根据卡片动作继续执行：approve / modify / rewrite。"""
+    """根据卡片动作继续执行：approve / refresh_* / modify / rewrite。"""
 
     run_dir, state = load_review_state(message_id)
     current_message_id = state.get("current_review_message_id")
@@ -684,6 +855,178 @@ def resume_review_action(
         print("=" * 60)
         return result
 
+    if action in {"refresh_cover", "refresh_graphics"}:
+        slide_paths = _normalized_slide_paths(run_dir, state)
+        image_keys = _normalized_image_keys(state)
+        state["review_action_mode"] = "image_refresh"
+        state["last_action"] = action
+        state["pending_revision_mode"] = None
+        use_preset_lane = bool(state.get("topic_data_style")) or len(slide_paths) > 1
+        topic_data = _match_topic_data(topic) if use_preset_lane else None
+
+        if action == "refresh_cover":
+            refresh_index = int(state.get("cover_refresh_count", 0)) + 1
+            try:
+                cover_path = _render_refreshed_cover(
+                    run_dir=run_dir,
+                    payload=payload,
+                    topic_data=topic_data,
+                    config=config,
+                    dry_run=effective_dry_run,
+                    skip_image=skip_image,
+                    refresh_index=refresh_index,
+                    current_cover_path=state.get("cover_path"),
+                )
+            except GeminiImageError as e:
+                print(f"  ❌ 刷新封面图失败: {e}")
+                result["status"] = "failed"
+                result["error"] = f"刷新封面图失败: {e}"
+                _save_result(run_dir, result)
+                return result
+
+            try:
+                uploaded_keys = upload_slide_images([cover_path], config, effective_dry_run)
+                image_key = uploaded_keys[0]
+                if effective_dry_run:
+                    print("  ⏭️  dry-run 模式，跳过上传")
+                else:
+                    print(f"  ✅ 新封面已上传: {image_key}")
+            except Exception as e:
+                print(f"  ❌ 刷新封面上传失败: {e}")
+                result["status"] = "failed"
+                result["error"] = f"刷新封面上传失败: {e}"
+                _save_result(run_dir, result)
+                return result
+
+            updated_slide_paths = [str(cover_path), *slide_paths[1:]]
+            updated_image_keys = [image_key, *image_keys[1:]]
+            new_message_id = _send_review_card(
+                payload=payload,
+                image_keys=updated_image_keys,
+                note_id=note_id,
+                config=config,
+                dry_run=effective_dry_run,
+                message_suffix=f"refresh_cover_{run_dir.name}_{refresh_index}",
+            )
+
+            state["status"] = "waiting_review"
+            state["slide_paths"] = updated_slide_paths
+            state["image_keys"] = updated_image_keys
+            state["cover_path"] = str(cover_path)
+            state["image_key"] = image_key
+            state["current_review_message_id"] = new_message_id
+            state["cover_refresh_count"] = refresh_index
+            save_review_state(run_dir, state)
+
+            result["status"] = "waiting_review"
+            result["steps"]["action"] = action
+            result["steps"]["review_card"] = new_message_id
+            _save_result(run_dir, result)
+
+            print("\n" + "=" * 60)
+            print("🎉 已完成图片刷新，等待下一轮审核")
+            print(f"   任务目录: {run_dir}")
+            print(f"   新审核卡片: {new_message_id}")
+            print("=" * 60)
+            return result
+
+        graphic_slot_count = max(len(slide_paths), len(image_keys)) - 1
+        if graphic_slot_count <= 0:
+            return _blocked_image_refresh(
+                run_dir,
+                state,
+                action,
+                reason="no_distinct_graphics_lane",
+                message="当前任务没有独立内容配图可刷新，仅有单张封面图。",
+            )
+        if not topic_data:
+            return _blocked_image_refresh(
+                run_dir,
+                state,
+                action,
+                reason="graphics_refresh_unsupported",
+                message="当前任务缺少可重建的预设图文模板，无法单独刷新内容配图。",
+            )
+
+        refresh_index = int(state.get("graphics_refresh_count", 0)) + 1
+        current_graphic_paths = slide_paths[1 : 1 + graphic_slot_count]
+        if len(current_graphic_paths) != graphic_slot_count:
+            return _blocked_image_refresh(
+                run_dir,
+                state,
+                action,
+                reason="graphics_refresh_unsupported",
+                message="当前任务的内容配图轨道不完整，无法安全地只刷新内容配图。",
+            )
+        try:
+            refreshed_graphics = _render_refreshed_graphics(
+                run_dir=run_dir,
+                topic_data=topic_data,
+                refresh_index=refresh_index,
+                current_graphic_paths=current_graphic_paths,
+            )
+        except Exception as e:
+            print(f"  ❌ 刷新内容配图失败: {e}")
+            result["status"] = "failed"
+            result["error"] = f"刷新内容配图失败: {e}"
+            _save_result(run_dir, result)
+            return result
+
+        try:
+            new_graphic_keys = upload_slide_images(refreshed_graphics, config, effective_dry_run)
+            if effective_dry_run:
+                print("  ⏭️  dry-run 模式，跳过上传")
+            else:
+                print(f"  ✅ 新内容配图已上传: {len(new_graphic_keys)} 张")
+        except Exception as e:
+            print(f"  ❌ 刷新内容配图上传失败: {e}")
+            result["status"] = "failed"
+            result["error"] = f"刷新内容配图上传失败: {e}"
+            _save_result(run_dir, result)
+            return result
+
+        cover_key = image_keys[0] if image_keys else str(state.get("image_key") or "")
+        if not cover_key:
+            return _blocked_image_refresh(
+                run_dir,
+                state,
+                action,
+                reason="missing_cover_asset",
+                message="当前任务缺少封面图上传记录，无法在不重跑全文案的前提下刷新内容配图。",
+            )
+
+        updated_slide_paths = [slide_paths[0], *[str(path) for path in refreshed_graphics]]
+        updated_image_keys = [cover_key, *new_graphic_keys]
+        new_message_id = _send_review_card(
+            payload=payload,
+            image_keys=updated_image_keys,
+            note_id=note_id,
+            config=config,
+            dry_run=effective_dry_run,
+            message_suffix=f"refresh_graphics_{run_dir.name}_{refresh_index}",
+        )
+
+        state["status"] = "waiting_review"
+        state["slide_paths"] = updated_slide_paths
+        state["image_keys"] = updated_image_keys
+        state["cover_path"] = slide_paths[0]
+        state["image_key"] = cover_key
+        state["current_review_message_id"] = new_message_id
+        state["graphics_refresh_count"] = refresh_index
+        save_review_state(run_dir, state)
+
+        result["status"] = "waiting_review"
+        result["steps"]["action"] = action
+        result["steps"]["review_card"] = new_message_id
+        _save_result(run_dir, result)
+
+        print("\n" + "=" * 60)
+        print("🎉 已完成图片刷新，等待下一轮审核")
+        print(f"   任务目录: {run_dir}")
+        print(f"   新审核卡片: {new_message_id}")
+        print("=" * 60)
+        return result
+
     if action not in {"modify", "rewrite"}:
         raise ValueError(f"不支持的动作: {action}")
 
@@ -747,14 +1090,17 @@ def resume_review_action(
             note_id=note_id,
         )
         print(f"  ✅ 新审核卡片已发送: {new_message_id}")
-        print("  ⏸️  已停在新初稿阶段，等你继续点通过/修改/重写。")
+        print("  ⏸️  已停在新初稿阶段，等你继续点通过或刷新图片。")
 
     state["status"] = "waiting_review"
     state["payload"] = new_payload
+    state["slide_paths"] = [str(cover_path)]
+    state["image_keys"] = [image_key]
     state["cover_path"] = str(cover_path)
     state["image_key"] = image_key
     state["current_review_message_id"] = new_message_id
     state["revision_count"] = int(state.get("revision_count", 0)) + 1
+    state["review_action_mode"] = "revision"
     state["last_action"] = action
     state["pending_revision_mode"] = None
     if revision_notes:
@@ -815,7 +1161,7 @@ def main():
     )
     parser.add_argument(
         "--action",
-        choices=["approve", "modify", "rewrite"],
+        choices=["approve", "refresh_cover", "refresh_graphics", "modify", "rewrite"],
         default=None,
         help="resume 模式下的卡片动作",
     )
@@ -876,6 +1222,8 @@ def main():
             raise SystemExit("--mode request-edit 时必须同时提供 --action")
         if not args.message_id:
             raise SystemExit("--mode request-edit 时必须同时提供 --message-id")
+        if args.action not in {"modify", "rewrite"}:
+            raise SystemExit("--mode request-edit 仅支持 modify/rewrite，不接受 refresh_* 动作")
         result = request_revision_notes(
             action=args.action,
             message_id=args.message_id,
