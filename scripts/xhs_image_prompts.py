@@ -37,7 +37,7 @@ _DEFAULT_IMAGE_TEMPLATE_CONFIG = {
             "sub_title_hint": "到店试听、提分测评、本地规划直接接住咨询转化",
             "cta_text": "点击咨询抢试听名额",
             "prompt": (
-                "{style_anchor}，3:4竖版，{size_text}。做成武汉本地高密度教培投放图，"
+                "{style_anchor}，3:4竖版，{size_text}，真实摄影感底图。做成武汉本地高密度教培投放图，"
                 "版式为 {layout_mode}。标题区必须是 {headline_style}，颜色锚定 {accent_palette}。"
                 "主体底图使用 {local_hint} 的真实场景，不要高级品牌海报。"
                 "主标题：{main_title}。副标题：{sub_title}。"
@@ -54,7 +54,7 @@ _DEFAULT_IMAGE_TEMPLATE_CONFIG = {
             "sub_title_hint": "多场景同屏展示，到校感和可信度一起拉满",
             "cta_text": "私信领取到校规划",
             "prompt": (
-                "{style_anchor}，3:4竖版，{size_text}。做成拼贴式高密度教培投放图，"
+                "{style_anchor}，3:4竖版，{size_text}，真实摄影感底图。做成拼贴式高密度教培投放图，"
                 "版式为 {layout_mode}。标题区使用 {headline_style}，主色按 {accent_palette} 执行。"
                 "画面主体必须是 {local_hint} 的真实校园照片拼贴，不是抽象拼贴。"
                 "主标题：{main_title}。副标题：{sub_title}。"
@@ -71,7 +71,7 @@ _DEFAULT_IMAGE_TEMPLATE_CONFIG = {
             "sub_title_hint": "家门口就近安排，先看最近校区再约试听",
             "cta_text": "点击咨询就近校区",
             "prompt": (
-                "{style_anchor}，3:4竖版，{size_text}。做成带地图 framing 的高密度教培投放图，"
+                "{style_anchor}，3:4竖版，{size_text}，真实摄影感底图。做成带地图 framing 的高密度教培投放图，"
                 "版式为 {layout_mode}。标题区使用 {headline_style}，颜色锚定 {accent_palette}。"
                 "主体视觉必须围绕 {local_hint}，清楚展示武汉地图、本地校区标注或覆盖范围。"
                 "主标题：{main_title}。副标题：{sub_title}。"
@@ -124,7 +124,7 @@ _DEFAULT_IMAGE_TEMPLATE_CONFIG = {
     "content_templates": {
         "service": {
             "prompt": (
-                "{style_anchor}，3:4竖版，{size_text}。按 {layout_mode} 生成内容图。"
+                "{style_anchor}，3:4竖版，{size_text}，真实课堂或咨询场景打底。按 {layout_mode} 生成内容图。"
                 "风格说明：{family_prompt}。标题区使用 {headline_style}，颜色按 {accent_palette} 执行。"
                 "主标题：{main_title}。画面主体参考 {scene_hint}。"
                 "主体信息只保留 3到5块，快读优先：{selling_points}。"
@@ -133,7 +133,7 @@ _DEFAULT_IMAGE_TEMPLATE_CONFIG = {
         },
         "trust": {
             "prompt": (
-                "{style_anchor}，3:4竖版，{size_text}。按 {layout_mode} 生成内容图。"
+                "{style_anchor}，3:4竖版，{size_text}，真实校区环境、老师团队、家长沟通或教学现场照片打底。按 {layout_mode} 生成内容图。"
                 "风格说明：{family_prompt}。标题区使用 {headline_style}，颜色按 {accent_palette} 执行。"
                 "主标题：{main_title}。辅助标题：{sub_title}。画面主体参考 {trust_scene}。"
                 "背书/动作信息只保留 3到5块：{trust_points}。"
@@ -149,10 +149,46 @@ _LEGACY_COVER_TEMPLATE_KEYS = {
     "parent_consult": "promo_blast",
 }
 
+_LEGACY_COVER_TEMPLATE_OVERRIDES = {
+    "map_coverage": {
+        "local_hint": "武汉本地校区分布地图、门店覆盖、就近规划中心",
+        "sub_title_hint": "家门口更方便，就近安排更省心",
+        "cta_text": "点击咨询领取专属方案",
+    },
+    "campus_access": {
+        "local_hint": "武汉校区门头、前台接待、家长到店咨询",
+        "sub_title_hint": "校区可达，家长决策更直接",
+        "cta_text": "预约测评了解就近校区",
+    },
+    "parent_consult": {
+        "local_hint": "武汉家长与老师面对面咨询、升学规划沟通场景",
+        "sub_title_hint": "家长最关心的方案和结果",
+        "cta_text": "点击获取升学规划建议",
+    },
+}
+
 _LEGACY_GRAPHICS_TEMPLATE_KEYS = {
     "classroom_focus": "onsite_overlay",
     "study_plan": "pain_solution",
     "brand_trust": "info_card_blue",
+}
+
+_LEGACY_GRAPHICS_TEMPLATE_OVERRIDES = {
+    "classroom_focus": {
+        "service_scene": "课堂讲解、小班授课、老师板书讲题",
+        "trust_scene": "真实教学现场、学生听课、老师授课细节",
+        "cta_text": "了解课程细节和试听安排",
+    },
+    "study_plan": {
+        "service_scene": "老师与家长讲解专属提升方案、查漏补缺路径",
+        "trust_scene": "老师团队围绕学习方案沟通、学情分析场景",
+        "cta_text": "点击咨询专属提升方案",
+    },
+    "brand_trust": {
+        "service_scene": "老师一对一答疑、教学服务说明",
+        "trust_scene": "校区环境、老师团队、家长沟通、品牌展示",
+        "cta_text": "预约测评了解师资与服务",
+    },
 }
 
 
@@ -226,15 +262,34 @@ def format_prompt_list(values: list[str]) -> str:
     return "；".join(value for value in values if value)
 
 
+def _template_with_legacy_overrides(
+    template_map: dict[str, Any],
+    normalized_key: str,
+    raw_key: Any,
+    legacy_overrides: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    template = deepcopy(template_map.get(normalized_key) or next(iter(template_map.values()), {}))
+    override = legacy_overrides.get(str(raw_key or ""))
+    if override:
+        template.update(override)
+    return template
+
+
 def build_cover_prompt(
     payload: dict[str, Any],
     state: dict[str, Any],
     client_slug: str,
 ) -> str:
     templates = load_image_prompt_templates(client_slug)
+    raw_cover_key = (state.get("image_templates") or {}).get("cover_template_key")
     template_state = ensure_template_state(state, templates)
     cover_templates = templates.get("cover_templates") or {}
-    template = cover_templates.get(template_state["cover_template_key"]) or next(iter(cover_templates.values()), {})
+    template = _template_with_legacy_overrides(
+        cover_templates,
+        template_state["cover_template_key"],
+        raw_cover_key,
+        _LEGACY_COVER_TEMPLATE_OVERRIDES,
+    )
     style_anchor = (templates.get("defaults") or {}).get(
         "style_anchor",
         "武汉本地高密度教培投放图，大字，强 CTA，真实本地场景",
@@ -260,8 +315,14 @@ def build_graphic_prompts(
     client_slug: str,
 ) -> list[tuple[str, str]]:
     templates = load_image_prompt_templates(client_slug)
+    raw_graphics_key = (state.get("image_templates") or {}).get("graphics_template_key")
     template_state = ensure_template_state(state, templates)
-    graphics_template = (templates.get("graphics_templates") or {}).get(template_state["graphics_template_key"], {})
+    graphics_template = _template_with_legacy_overrides(
+        templates.get("graphics_templates") or {},
+        template_state["graphics_template_key"],
+        raw_graphics_key,
+        _LEGACY_GRAPHICS_TEMPLATE_OVERRIDES,
+    )
     content_templates = templates.get("content_templates") or {}
     style_anchor = (templates.get("defaults") or {}).get(
         "style_anchor",

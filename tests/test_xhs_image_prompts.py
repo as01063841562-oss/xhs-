@@ -112,6 +112,19 @@ class XhsImagePromptsTest(unittest.TestCase):
                 for marker in markers:
                     self.assertIn(marker, prompt)
 
+    def test_build_cover_prompt_keeps_legacy_parent_consult_copy_after_normalization(self) -> None:
+        state = {
+            "image_templates": {
+                "cover_template_key": "parent_consult",
+                "graphics_template_key": "study_plan",
+            }
+        }
+
+        prompt = xhs_image_prompts.build_cover_prompt(sample_payload(), state, "wuhan-tutoring")
+
+        self.assertEqual(state["image_templates"]["cover_template_key"], "promo_blast")
+        self.assertIn("家长最关心的方案和结果", prompt)
+
     def test_build_graphic_prompts_supports_new_graphic_families(self) -> None:
         family_expectations = {
             "info_card_blue": ["蓝白信息卡", "3到5块", "家长一眼扫懂"],

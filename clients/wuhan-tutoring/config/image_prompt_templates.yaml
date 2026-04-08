@@ -21,7 +21,7 @@ cover_templates:
     sub_title_hint: "到店试听、提分测评、本地规划直接接住咨询转化"
     cta_text: "点击咨询抢试听名额"
     prompt: >
-      {style_anchor}，3:4竖版，{size_text}。做成武汉本地高密度教培投放图，
+      {style_anchor}，3:4竖版，{size_text}，真实摄影感底图。做成武汉本地高密度教培投放图，
       版式为 {layout_mode}。标题区必须是 {headline_style}，颜色锚定 {accent_palette}。
       主体底图使用 {local_hint} 的真实场景，不要高级品牌海报。
       主标题：{main_title}。副标题：{sub_title}。
@@ -36,7 +36,7 @@ cover_templates:
     sub_title_hint: "多场景同屏展示，到校感和可信度一起拉满"
     cta_text: "私信领取到校规划"
     prompt: >
-      {style_anchor}，3:4竖版，{size_text}。做成拼贴式高密度教培投放图，
+      {style_anchor}，3:4竖版，{size_text}，真实摄影感底图。做成拼贴式高密度教培投放图，
       版式为 {layout_mode}。标题区使用 {headline_style}，主色按 {accent_palette} 执行。
       画面主体必须是 {local_hint} 的真实校园照片拼贴，不是抽象拼贴。
       主标题：{main_title}。副标题：{sub_title}。
@@ -51,7 +51,7 @@ cover_templates:
     sub_title_hint: "家门口就近安排，先看最近校区再约试听"
     cta_text: "点击咨询就近校区"
     prompt: >
-      {style_anchor}，3:4竖版，{size_text}。做成带地图 framing 的高密度教培投放图，
+      {style_anchor}，3:4竖版，{size_text}，真实摄影感底图。做成带地图 framing 的高密度教培投放图，
       版式为 {layout_mode}。标题区使用 {headline_style}，颜色锚定 {accent_palette}。
       主体视觉必须围绕 {local_hint}，清楚展示武汉地图、本地校区标注或覆盖范围。
       主标题：{main_title}。副标题：{sub_title}。
@@ -97,7 +97,7 @@ content_templates:
   service:
     purpose: "内容配图-服务说明"
     prompt: >
-      {style_anchor}，3:4竖版，{size_text}。按 {layout_mode} 生成内容图。
+      {style_anchor}，3:4竖版，{size_text}，真实课堂或咨询场景打底。按 {layout_mode} 生成内容图。
       风格说明：{family_prompt}。标题区使用 {headline_style}，颜色按 {accent_palette} 执行。
       主标题：{main_title}。
       画面主体参考 {scene_hint}。
@@ -107,7 +107,7 @@ content_templates:
   trust:
     purpose: "内容配图-信任背书"
     prompt: >
-      {style_anchor}，3:4竖版，{size_text}。按 {layout_mode} 生成内容图。
+      {style_anchor}，3:4竖版，{size_text}，真实校区环境、老师团队、家长沟通或教学现场照片打底。按 {layout_mode} 生成内容图。
       风格说明：{family_prompt}。标题区使用 {headline_style}，颜色按 {accent_palette} 执行。
       主标题：{main_title}。辅助标题：{sub_title}。
       画面主体参考 {trust_scene}。
