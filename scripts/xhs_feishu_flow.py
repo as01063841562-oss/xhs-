@@ -463,12 +463,10 @@ def _review_card_tags(payload: dict[str, Any]) -> str:
     return " ".join(f"#{t}" for t in payload["hashtags"][:6])
 
 
-def _review_style_hint(state: dict[str, Any], slide_paths: list[str]) -> str | None:
+def _persisted_review_style_hint(state: dict[str, Any]) -> str | None:
     style = state.get("topic_data_style")
     if style:
         return str(style)
-    if len(slide_paths) > 1:
-        return "info_card"
     return None
 
 
@@ -777,6 +775,26 @@ def _blocked_image_refresh(
     return result
 
 
+def _validate_multi_image_review_state(
+    run_dir: Path,
+    state: dict[str, Any],
+    action: str,
+    slide_paths: list[str],
+    image_keys: list[str],
+) -> dict[str, Any] | None:
+    if len(slide_paths) <= 1:
+        return None
+    if len(image_keys) == len(slide_paths):
+        return None
+    return _blocked_image_refresh(
+        run_dir,
+        state,
+        action,
+        reason="inconsistent_review_state",
+        message="当前审核状态的图片路径与飞书 image_keys 数量不一致，无法安全刷新图片。",
+    )
+
+
 def run_flow(
     topic: str,
     audience: str,
@@ -1015,7 +1033,16 @@ def resume_review_action(
         state["review_action_mode"] = "image_refresh"
         state["last_action"] = action
         state["pending_revision_mode"] = None
-        style_hint = _review_style_hint(state, slide_paths)
+        invalid_state = _validate_multi_image_review_state(
+            run_dir,
+            state,
+            action,
+            slide_paths,
+            image_keys,
+        )
+        if invalid_state:
+            return invalid_state
+        style_hint = _persisted_review_style_hint(state)
 
         if action == "refresh_cover":
             refresh_index = int(state.get("cover_refresh_count", 0)) + 1
@@ -1097,8 +1124,8 @@ def resume_review_action(
                 run_dir,
                 state,
                 action,
-                reason="graphics_refresh_unsupported",
-                message="当前任务缺少可复用的多图样式提示，无法单独刷新内容配图。",
+                reason="missing_graphics_style_metadata",
+                message="当前任务缺少持久化的多图样式元数据，无法安全刷新内容配图。",
             )
 
         refresh_index = int(state.get("graphics_refresh_count", 0)) + 1
@@ -1208,7 +1235,7 @@ def resume_review_action(
         )
 
     current_slide_paths = _normalized_slide_paths(run_dir, state)
-    style_hint = _review_style_hint(state, current_slide_paths)
+    style_hint = _persisted_review_style_hint(state)
     regenerated_slide_paths: list[Path] | None = None
     regenerated_image_keys: list[str] | None = None
 

@@ -255,6 +255,52 @@ class XhsFeishuFlowTest(unittest.TestCase):
         self.assertEqual(captured_topics[0]["tags"], payload["hashtags"])
         mock_generate_image.assert_not_called()
 
+    def test_resume_review_action_refresh_cover_blocks_inconsistent_multi_image_state(self) -> None:
+        payload = sample_payload()
+        with TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            state = review_state(
+                run_dir,
+                payload,
+                slide_paths=[
+                    str(run_dir / "slides" / "slide_1.png"),
+                    str(run_dir / "slides" / "slide_2.png"),
+                    str(run_dir / "slides" / "slide_3.png"),
+                ],
+                image_keys=["img_cover_old"],
+                topic_data_style="info_card",
+            )
+
+            with patch.object(xhs_feishu_flow, "load_review_state", return_value=(run_dir, state)), patch.object(
+                xhs_feishu_flow, "load_config", return_value={}
+            ), patch.object(
+                xhs_feishu_flow, "generate_image"
+            ) as mock_generate_image, patch.object(
+                xhs_feishu_flow, "render_image"
+            ) as mock_render_image, patch.object(
+                xhs_feishu_flow, "upload_slide_images"
+            ) as mock_upload, patch.object(
+                xhs_feishu_flow, "FeishuClient"
+            ) as mock_feishu, patch.object(
+                xhs_feishu_flow, "save_review_state"
+            ), patch.object(
+                xhs_feishu_flow, "_save_result"
+            ):
+                result = xhs_feishu_flow.resume_review_action("refresh_cover", "msg_current")
+
+        self.assertEqual(result["status"], "blocked")
+        self.assertEqual(result["reason"], "inconsistent_review_state")
+        self.assertEqual(result["steps"]["action"], "refresh_cover")
+        self.assertEqual(state["current_review_message_id"], "msg_current")
+        self.assertEqual(state["slide_paths"][1:], [
+            str(run_dir / "slides" / "slide_2.png"),
+            str(run_dir / "slides" / "slide_3.png"),
+        ])
+        mock_generate_image.assert_not_called()
+        mock_render_image.assert_not_called()
+        mock_upload.assert_not_called()
+        mock_feishu.assert_not_called()
+
     def test_resume_review_action_refresh_graphics_only_updates_graphics_lane(self) -> None:
         payload = sample_payload()
         topic_data = {
@@ -331,6 +377,48 @@ class XhsFeishuFlowTest(unittest.TestCase):
         mock_generate_image.assert_not_called()
         mock_upload.assert_called_once()
         feishu.send_review_card.assert_called_once()
+
+    def test_resume_review_action_refresh_graphics_blocks_without_persisted_style_metadata(self) -> None:
+        payload = sample_payload()
+        with TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            state = review_state(
+                run_dir,
+                payload,
+                slide_paths=[
+                    str(run_dir / "slides" / "slide_1.png"),
+                    str(run_dir / "slides" / "slide_2.png"),
+                    str(run_dir / "slides" / "slide_3.png"),
+                ],
+                image_keys=["img_cover_old", "img_graphic_old_1", "img_graphic_old_2"],
+                topic_data_style=None,
+            )
+
+            with patch.object(xhs_feishu_flow, "load_review_state", return_value=(run_dir, state)), patch.object(
+                xhs_feishu_flow, "load_config", return_value={}
+            ), patch.object(
+                xhs_feishu_flow, "render_image"
+            ) as mock_render_image, patch.object(
+                xhs_feishu_flow, "generate_image"
+            ) as mock_generate_image, patch.object(
+                xhs_feishu_flow, "upload_slide_images"
+            ) as mock_upload, patch.object(
+                xhs_feishu_flow, "FeishuClient"
+            ) as mock_feishu, patch.object(
+                xhs_feishu_flow, "save_review_state"
+            ), patch.object(
+                xhs_feishu_flow, "_save_result"
+            ):
+                result = xhs_feishu_flow.resume_review_action("refresh_graphics", "msg_current")
+
+        self.assertEqual(result["status"], "blocked")
+        self.assertEqual(result["reason"], "missing_graphics_style_metadata")
+        self.assertEqual(result["steps"]["action"], "refresh_graphics")
+        self.assertEqual(state["current_review_message_id"], "msg_current")
+        mock_render_image.assert_not_called()
+        mock_generate_image.assert_not_called()
+        mock_upload.assert_not_called()
+        mock_feishu.assert_not_called()
 
     def test_resume_review_action_refresh_graphics_reports_when_no_graphics_lane_exists(self) -> None:
         payload = sample_payload()
