@@ -41,6 +41,20 @@ def sample_payload() -> dict[str, object]:
     }
 
 
+def sample_preset_topic_data() -> dict[str, object]:
+    return {
+        "title": "原始预设标题",
+        "subtitle": "原始预设副标题",
+        "style": "info_card",
+        "tags": ["原始标签1", "原始标签2"],
+        "key_points": [
+            "原始知识点一",
+            "原始知识点二",
+            "原始知识点三",
+        ],
+    }
+
+
 def review_state(
     run_dir: Path,
     payload: dict[str, object],
@@ -162,6 +176,84 @@ class XhsFeishuFlowTest(unittest.TestCase):
         mock_render_image.assert_not_called()
         mock_upload.assert_called_once()
         feishu.send_review_card.assert_called_once()
+
+    def test_resume_review_action_refresh_cover_uses_current_payload_for_preset_layout(self) -> None:
+        payload = sample_payload()
+        payload["cover_title"] = "修改版｜当前封面标题"
+        payload["variants"] = [
+            {
+                "title": "修改版首图标题",
+                "angle": "修改版首图角度",
+                "body": "修改后的第一卖点。修改后的第二卖点。修改后的第三卖点。",
+            },
+            {
+                "title": "修改版第二图标题",
+                "angle": "修改版第二图角度",
+                "body": "修改后的第二图内容。",
+            },
+            {
+                "title": "修改版第三图标题",
+                "angle": "修改版第三图角度",
+                "body": "修改后的第三图内容。",
+            },
+        ]
+        topic_data = sample_preset_topic_data()
+
+        with TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            cover_path = run_dir / "slides" / "slide_1.png"
+            state = review_state(
+                run_dir,
+                payload,
+                slide_paths=[str(cover_path), str(run_dir / "slides" / "slide_2.png"), str(run_dir / "slides" / "slide_3.png")],
+                image_keys=["img_cover_old", "img_graphic_old_1", "img_graphic_old_2"],
+                topic_data_style="info_card",
+            )
+            feishu = MagicMock()
+            feishu.send_review_card.return_value = "msg_cover_refresh_2"
+            captured_topics: list[dict[str, object]] = []
+
+            def fake_render_image(topic: dict[str, object], output_path: Path | str, width: int = 1080, height: int = 1440) -> Path:
+                del width, height
+                captured_topics.append(dict(topic))
+                target = Path(output_path)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(b"png")
+                return target
+
+            with patch.object(xhs_feishu_flow, "load_review_state", return_value=(run_dir, state)), patch.object(
+                xhs_feishu_flow, "load_config", return_value={}
+            ), patch.object(
+                xhs_feishu_flow, "_match_topic_data", return_value=topic_data
+            ), patch.object(
+                xhs_feishu_flow, "render_image", side_effect=fake_render_image
+            ) as mock_render_image, patch.object(
+                xhs_feishu_flow, "generate_image"
+            ) as mock_generate_image, patch.object(
+                xhs_feishu_flow, "upload_slide_images", return_value=["img_cover_new"]
+            ), patch.object(
+                xhs_feishu_flow, "FeishuClient", return_value=feishu
+            ), patch.object(
+                xhs_feishu_flow, "save_review_state"
+            ), patch.object(
+                xhs_feishu_flow, "_save_result"
+            ), patch.object(
+                xhs_feishu_flow, "timestamp", return_value="2026-04-08T10:02:00"
+            ):
+                result = xhs_feishu_flow.resume_review_action("refresh_cover", "msg_current")
+
+        self.assertEqual(result["status"], "waiting_review")
+        self.assertEqual(mock_render_image.call_count, 1)
+        self.assertEqual(captured_topics[0]["title"], payload["cover_title"])
+        self.assertEqual(captured_topics[0]["subtitle"], payload["variants"][0]["angle"])
+        self.assertEqual(
+            captured_topics[0]["selling_points"],
+            ["修改后的第一卖点", "修改后的第二卖点", "修改后的第三卖点"],
+        )
+        self.assertEqual(captured_topics[0]["style"], "promo_cover")
+        self.assertEqual(captured_topics[0]["original_style"], topic_data["style"])
+        self.assertEqual(captured_topics[0]["tags"], payload["hashtags"])
+        mock_generate_image.assert_not_called()
 
     def test_resume_review_action_refresh_graphics_only_updates_graphics_lane(self) -> None:
         payload = sample_payload()
@@ -341,6 +433,103 @@ class XhsFeishuFlowTest(unittest.TestCase):
         mock_generate_cover.assert_called_once()
         mock_upload_cover.assert_called_once()
         feishu.send_review_card.assert_called_once()
+
+    def test_resume_review_action_modify_preserves_graphics_lane_for_preset_review(self) -> None:
+        payload = sample_payload()
+        revised_payload = sample_payload()
+        revised_payload["cover_title"] = "修改版｜多图审核标题"
+        revised_payload["cover_prompt"] = "修改版多图封面提示词"
+        revised_payload["variants"] = [
+            {
+                "title": "修改版图1",
+                "angle": "修改版角度1",
+                "body": "修改版图1正文。修改版图1补充。修改版图1收束。",
+            },
+            {
+                "title": "修改版图2",
+                "angle": "修改版角度2",
+                "body": "修改版图2正文。",
+            },
+            {
+                "title": "修改版图3",
+                "angle": "修改版角度3",
+                "body": "修改版图3正文。",
+            },
+        ]
+        topic_data = sample_preset_topic_data()
+
+        with TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            slide_paths = [
+                str(run_dir / "slides" / "slide_1.png"),
+                str(run_dir / "slides" / "slide_2.png"),
+                str(run_dir / "slides" / "slide_3.png"),
+            ]
+            state = review_state(
+                run_dir,
+                payload,
+                slide_paths=slide_paths,
+                image_keys=["img_cover_old", "img_graphic_old_1", "img_graphic_old_2"],
+                topic_data_style="info_card",
+            )
+            feishu = MagicMock()
+            feishu.send_review_card.return_value = "msg_modify_preset_1"
+
+            def fake_render_image(topic: dict[str, object], output_path: Path | str, width: int = 1080, height: int = 1440) -> Path:
+                del topic, width, height
+                target = Path(output_path)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(b"png")
+                return target
+
+            with patch.object(xhs_feishu_flow, "load_review_state", return_value=(run_dir, state)), patch.object(
+                xhs_feishu_flow, "load_config", return_value={}
+            ), patch.object(
+                xhs_feishu_flow, "generate_xhs_payload", return_value=revised_payload
+            ), patch.object(
+                xhs_feishu_flow, "_match_topic_data", return_value=topic_data
+            ), patch.object(
+                xhs_feishu_flow, "render_image", side_effect=fake_render_image
+            ) as mock_render_image, patch.object(
+                xhs_feishu_flow, "upload_slide_images", return_value=["img_cover_new", "img_graphic_new_1", "img_graphic_new_2"]
+            ) as mock_upload_slides, patch.object(
+                xhs_feishu_flow, "generate_cover_art", return_value=run_dir / "legacy_cover.png"
+            ) as mock_generate_cover, patch.object(
+                xhs_feishu_flow, "upload_cover_image", return_value="img_legacy_cover"
+            ) as mock_upload_cover, patch.object(
+                xhs_feishu_flow, "FeishuClient", return_value=feishu
+            ), patch.object(
+                xhs_feishu_flow, "save_review_state"
+            ), patch.object(
+                xhs_feishu_flow, "_save_result"
+            ), patch.object(
+                xhs_feishu_flow, "timestamp", return_value="2026-04-08T10:12:00"
+            ):
+                result = xhs_feishu_flow.resume_review_action(
+                    "modify",
+                    "msg_current",
+                    revision_notes="保留三图结构",
+                    revision_scope="copywriting",
+                )
+
+        self.assertEqual(result["status"], "waiting_review")
+        self.assertEqual(result["steps"]["action"], "modify")
+        self.assertEqual(state["payload"], revised_payload)
+        self.assertEqual(len(state["slide_paths"]), 3)
+        self.assertEqual(
+            state["image_keys"],
+            ["img_cover_new", "img_graphic_new_1", "img_graphic_new_2"],
+        )
+        self.assertEqual(state["cover_path"], state["slide_paths"][0])
+        self.assertEqual(state["image_key"], "img_cover_new")
+        self.assertEqual(state["topic_data_style"], topic_data["style"])
+        self.assertEqual(state["current_review_message_id"], "msg_modify_preset_1")
+        self.assertEqual(state["review_action_mode"], "revision")
+        self.assertEqual(feishu.send_review_card.call_args.kwargs["image_key"], state["image_keys"])
+        self.assertEqual(mock_render_image.call_count, 3)
+        mock_upload_slides.assert_called_once()
+        mock_generate_cover.assert_not_called()
+        mock_upload_cover.assert_not_called()
 
     def test_main_rejects_refresh_actions_in_request_edit_mode(self) -> None:
         with patch.object(

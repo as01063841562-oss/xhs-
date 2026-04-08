@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from copy import deepcopy
 from pathlib import Path
@@ -462,6 +463,15 @@ def _review_card_tags(payload: dict[str, Any]) -> str:
     return " ".join(f"#{t}" for t in payload["hashtags"][:6])
 
 
+def _review_style_hint(state: dict[str, Any], slide_paths: list[str]) -> str | None:
+    style = state.get("topic_data_style")
+    if style:
+        return str(style)
+    if len(slide_paths) > 1:
+        return "info_card"
+    return None
+
+
 def _normalized_slide_paths(run_dir: Path, state: dict[str, Any]) -> list[str]:
     slide_paths = [str(path) for path in state.get("slide_paths") or [] if path]
     if slide_paths:
@@ -492,43 +502,185 @@ def _refreshed_artifact_path(
     return base_path.with_name(f"{base_path.stem}_refresh_{refresh_index}{suffix}")
 
 
-def _build_preset_slide_topics(topic_data: dict[str, Any]) -> list[dict[str, Any]]:
-    cover_topic = dict(topic_data)
-    cover_topic["original_style"] = topic_data.get("style", "info_card")
-    cover_topic["style"] = "promo_cover"
-    cta_topic = {
-        "title": topic_data["title"],
-        "subtitle": "收藏+关注·获取更多干货",
-        "style": "info_card",
-        "tags": topic_data.get("tags", []),
-        "key_points": [
-            "✅ 收藏本笔记，考前随时翻看",
-            "✅ 关注账号，每日更新武汉升学干货",
-            "✅ 评论区留言，免费获取完整资料",
-            "✅ 分享给其他家长，一起备战中考",
-            "✅ 点赞支持，激励我们持续更新",
-        ],
+def _versioned_artifact_path(
+    current_path: str | Path | None,
+    fallback_path: Path,
+    marker: str,
+    version_index: int,
+) -> Path:
+    base_path = Path(current_path) if current_path else fallback_path
+    suffix = base_path.suffix or ".png"
+    return base_path.with_name(f"{base_path.stem}_{marker}_{version_index}{suffix}")
+
+
+def _split_review_points(text: str | None, limit: int = 3) -> list[str]:
+    raw = str(text or "").replace("\n", "。")
+    parts = [part.strip(" 。！？!?；;") for part in re.split(r"[。！？!?；;]+", raw) if part.strip(" 。！？!?；;")]
+    return parts[:limit]
+
+
+def _variant_review_points(payload: dict[str, Any], variant: dict[str, Any], limit: int = 3) -> list[str]:
+    points = _split_review_points(str(variant.get("body") or ""), limit=limit)
+    if points:
+        return points
+    title = str(variant.get("title") or payload.get("cover_title") or "").strip()
+    if title:
+        return [title]
+    return ["内容待确认"]
+
+
+def _content_layout_style(style_hint: str | None) -> str:
+    if style_hint in {"data_table", "info_card", "comparison", "timeline"}:
+        return str(style_hint)
+    return "info_card"
+
+
+def _build_payload_cover_topic(payload: dict[str, Any], style_hint: str | None) -> dict[str, Any]:
+    variants = payload.get("variants") or []
+    lead_variant = variants[0] if variants else {}
+    return {
+        "title": payload.get("cover_title") or lead_variant.get("title") or "",
+        "subtitle": lead_variant.get("angle") or "",
+        "style": "promo_cover",
+        "original_style": _content_layout_style(style_hint),
+        "tags": list(payload.get("hashtags") or []),
+        "selling_points": _variant_review_points(payload, lead_variant, limit=3),
     }
-    return [cover_topic, dict(topic_data), cta_topic]
+
+
+def _build_payload_content_topic(
+    payload: dict[str, Any],
+    variant: dict[str, Any],
+    style_hint: str | None,
+    paired_variant: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    title = str(variant.get("title") or payload.get("cover_title") or "")
+    subtitle = str(variant.get("angle") or payload.get("cover_title") or "")
+    tags = list(payload.get("hashtags") or [])
+    points = _variant_review_points(payload, variant, limit=3)
+    style = _content_layout_style(style_hint)
+
+    if style == "data_table":
+        return {
+            "title": title,
+            "subtitle": subtitle,
+            "style": "data_table",
+            "tags": tags,
+            "data_content": {
+                "table_title": subtitle or title,
+                "headers": ["模块", "说明"],
+                "rows": [[f"要点{i + 1}", point] for i, point in enumerate(points)],
+            },
+        }
+
+    if style == "comparison":
+        other = paired_variant or variant
+        other_points = _variant_review_points(payload, other, limit=3)
+        item_count = max(len(points), len(other_points), 1)
+        items = []
+        for i in range(item_count):
+            items.append(
+                {
+                    "left": points[i] if i < len(points) else "",
+                    "right": other_points[i] if i < len(other_points) else "",
+                    "label": f"要点{i + 1}",
+                }
+            )
+        return {
+            "title": title,
+            "subtitle": subtitle,
+            "style": "comparison",
+            "tags": tags,
+            "compare_data": {
+                "left_title": title or "当前版本",
+                "right_title": str(other.get("title") or "补充说明"),
+                "items": items,
+            },
+        }
+
+    if style == "timeline":
+        return {
+            "title": title,
+            "subtitle": subtitle,
+            "style": "timeline",
+            "tags": tags,
+            "timeline_data": [
+                {
+                    "month": f"步骤{i + 1}",
+                    "title": point if len(point) <= 18 else f"步骤{i + 1}",
+                    "desc": point,
+                }
+                for i, point in enumerate(points)
+            ],
+        }
+
+    return {
+        "title": title,
+        "subtitle": subtitle,
+        "style": "info_card",
+        "tags": tags,
+        "key_points": points,
+    }
+
+
+def _build_payload_slide_topics(payload: dict[str, Any], style_hint: str | None) -> list[dict[str, Any]]:
+    variants = list(payload.get("variants") or [])
+    if not variants:
+        fallback_variant = {
+            "title": payload.get("cover_title") or "",
+            "angle": "",
+            "body": "",
+        }
+        variants = [fallback_variant]
+
+    first_variant = variants[0]
+    second_variant = variants[1] if len(variants) > 1 else first_variant
+    third_variant = variants[2] if len(variants) > 2 else second_variant
+
+    return [
+        _build_payload_cover_topic(payload, style_hint),
+        _build_payload_content_topic(payload, first_variant, style_hint, paired_variant=second_variant),
+        _build_payload_content_topic(payload, third_variant, style_hint, paired_variant=first_variant),
+    ]
+
+
+def _render_payload_slide_set(
+    run_dir: Path,
+    payload: dict[str, Any],
+    style_hint: str | None,
+    marker: str,
+    version_index: int,
+    current_slide_paths: list[str] | None = None,
+) -> list[Path]:
+    topics = _build_payload_slide_topics(payload, style_hint)
+    current_slide_paths = list(current_slide_paths or [])
+    rendered: list[Path] = []
+    for index, topic in enumerate(topics, start=1):
+        fallback = run_dir / "slides" / f"slide_{index}.png"
+        current_path = current_slide_paths[index - 1] if index - 1 < len(current_slide_paths) else None
+        target = _versioned_artifact_path(current_path, fallback, marker, version_index)
+        rendered.append(render_image(topic, target))
+    return rendered
 
 
 def _render_refreshed_cover(
     run_dir: Path,
     payload: dict[str, Any],
-    topic_data: dict[str, Any] | None,
+    style_hint: str | None,
     config: dict[str, Any],
     dry_run: bool,
     skip_image: bool,
     refresh_index: int,
     current_cover_path: str | None,
 ) -> Path:
-    target_path = _refreshed_artifact_path(
+    target_path = _versioned_artifact_path(
         current_cover_path,
         run_dir / "cover.png",
+        "refresh",
         refresh_index,
     )
-    if topic_data:
-        return render_image(_build_preset_slide_topics(topic_data)[0], target_path)
+    if style_hint:
+        return render_image(_build_payload_slide_topics(payload, style_hint)[0], target_path)
     if skip_image or dry_run:
         _generate_placeholder(target_path, payload.get("cover_prompt", ""))
         return target_path
@@ -542,11 +694,12 @@ def _render_refreshed_cover(
 
 def _render_refreshed_graphics(
     run_dir: Path,
-    topic_data: dict[str, Any],
+    payload: dict[str, Any],
+    style_hint: str,
     refresh_index: int,
     current_graphic_paths: list[str],
 ) -> list[Path]:
-    slide_topics = _build_preset_slide_topics(topic_data)[1:]
+    slide_topics = _build_payload_slide_topics(payload, style_hint)[1:]
     if not current_graphic_paths:
         current_graphic_paths = [
             str(run_dir / "slides" / "slide_2.png"),
@@ -558,9 +711,10 @@ def _render_refreshed_graphics(
     refreshed_paths: list[Path] = []
     for index, topic in enumerate(slide_topics[: len(current_graphic_paths)]):
         fallback = run_dir / "slides" / f"slide_{index + 2}.png"
-        target_path = _refreshed_artifact_path(
+        target_path = _versioned_artifact_path(
             current_graphic_paths[index] if index < len(current_graphic_paths) else None,
             fallback,
+            "refresh",
             refresh_index,
         )
         refreshed_paths.append(render_image(topic, target_path))
@@ -861,8 +1015,7 @@ def resume_review_action(
         state["review_action_mode"] = "image_refresh"
         state["last_action"] = action
         state["pending_revision_mode"] = None
-        use_preset_lane = bool(state.get("topic_data_style")) or len(slide_paths) > 1
-        topic_data = _match_topic_data(topic) if use_preset_lane else None
+        style_hint = _review_style_hint(state, slide_paths)
 
         if action == "refresh_cover":
             refresh_index = int(state.get("cover_refresh_count", 0)) + 1
@@ -870,7 +1023,7 @@ def resume_review_action(
                 cover_path = _render_refreshed_cover(
                     run_dir=run_dir,
                     payload=payload,
-                    topic_data=topic_data,
+                    style_hint=style_hint,
                     config=config,
                     dry_run=effective_dry_run,
                     skip_image=skip_image,
@@ -939,13 +1092,13 @@ def resume_review_action(
                 reason="no_distinct_graphics_lane",
                 message="当前任务没有独立内容配图可刷新，仅有单张封面图。",
             )
-        if not topic_data:
+        if not style_hint:
             return _blocked_image_refresh(
                 run_dir,
                 state,
                 action,
                 reason="graphics_refresh_unsupported",
-                message="当前任务缺少可重建的预设图文模板，无法单独刷新内容配图。",
+                message="当前任务缺少可复用的多图样式提示，无法单独刷新内容配图。",
             )
 
         refresh_index = int(state.get("graphics_refresh_count", 0)) + 1
@@ -961,7 +1114,8 @@ def resume_review_action(
         try:
             refreshed_graphics = _render_refreshed_graphics(
                 run_dir=run_dir,
-                topic_data=topic_data,
+                payload=payload,
+                style_hint=style_hint,
                 refresh_index=refresh_index,
                 current_graphic_paths=current_graphic_paths,
             )
@@ -1053,26 +1207,63 @@ def resume_review_action(
             f"# {v['title']}\n\n**角度：** {v['angle']}\n\n{v['body']}\n",
         )
 
-    try:
-        cover_path = generate_cover_art(run_dir, new_payload, config, effective_dry_run, skip_image)
-    except GeminiImageError as e:
-        print(f"  ❌ 重新生成封面图失败: {e}")
-        result["status"] = "failed"
-        result["error"] = f"重新生成封面图失败: {e}"
-        _save_result(run_dir, result)
-        return result
-    try:
-        image_key = upload_cover_image(cover_path, config, effective_dry_run)
-        if effective_dry_run:
-            print("  ⏭️  dry-run 模式，跳过上传")
-        else:
-            print(f"  ✅ 新封面已上传: {image_key}")
-    except Exception as e:
-        print(f"  ❌ 重新上传失败: {e}")
-        result["status"] = "failed"
-        result["error"] = f"重新上传失败: {e}"
-        _save_result(run_dir, result)
-        return result
+    current_slide_paths = _normalized_slide_paths(run_dir, state)
+    style_hint = _review_style_hint(state, current_slide_paths)
+    regenerated_slide_paths: list[Path] | None = None
+    regenerated_image_keys: list[str] | None = None
+
+    if style_hint:
+        revision_index = int(state.get("revision_count", 0)) + 1
+        try:
+            regenerated_slide_paths = _render_payload_slide_set(
+                run_dir=run_dir,
+                payload=new_payload,
+                style_hint=style_hint,
+                marker="rev",
+                version_index=revision_index,
+                current_slide_paths=current_slide_paths,
+            )
+        except Exception as e:
+            print(f"  ❌ 重新生成多图审核素材失败: {e}")
+            result["status"] = "failed"
+            result["error"] = f"重新生成多图审核素材失败: {e}"
+            _save_result(run_dir, result)
+            return result
+        try:
+            regenerated_image_keys = upload_slide_images(regenerated_slide_paths, config, effective_dry_run)
+            if effective_dry_run:
+                print("  ⏭️  dry-run 模式，跳过上传")
+            else:
+                print(f"  ✅ 新审核图片已上传: {len(regenerated_image_keys)} 张")
+        except Exception as e:
+            print(f"  ❌ 重新上传多图审核素材失败: {e}")
+            result["status"] = "failed"
+            result["error"] = f"重新上传多图审核素材失败: {e}"
+            _save_result(run_dir, result)
+            return result
+        cover_path = regenerated_slide_paths[0]
+        image_key = regenerated_image_keys[0]
+    else:
+        try:
+            cover_path = generate_cover_art(run_dir, new_payload, config, effective_dry_run, skip_image)
+        except GeminiImageError as e:
+            print(f"  ❌ 重新生成封面图失败: {e}")
+            result["status"] = "failed"
+            result["error"] = f"重新生成封面图失败: {e}"
+            _save_result(run_dir, result)
+            return result
+        try:
+            image_key = upload_cover_image(cover_path, config, effective_dry_run)
+            if effective_dry_run:
+                print("  ⏭️  dry-run 模式，跳过上传")
+            else:
+                print(f"  ✅ 新封面已上传: {image_key}")
+        except Exception as e:
+            print(f"  ❌ 重新上传失败: {e}")
+            result["status"] = "failed"
+            result["error"] = f"重新上传失败: {e}"
+            _save_result(run_dir, result)
+            return result
 
     card_content = format_card_content(new_payload, 0)
     tags_str = " ".join(f"#{t}" for t in new_payload["hashtags"][:6])
@@ -1083,7 +1274,7 @@ def resume_review_action(
     else:
         feishu = FeishuClient(config)
         new_message_id = feishu.send_review_card(
-            image_key=image_key,
+            image_key=regenerated_image_keys if regenerated_image_keys else image_key,
             title=f"🎨 小红书笔记审核 — {new_payload['cover_title']}",
             content=card_content,
             tags=tags_str,
@@ -1094,8 +1285,12 @@ def resume_review_action(
 
     state["status"] = "waiting_review"
     state["payload"] = new_payload
-    state["slide_paths"] = [str(cover_path)]
-    state["image_keys"] = [image_key]
+    if regenerated_slide_paths and regenerated_image_keys:
+        state["slide_paths"] = [str(path) for path in regenerated_slide_paths]
+        state["image_keys"] = list(regenerated_image_keys)
+    else:
+        state["slide_paths"] = [str(cover_path)]
+        state["image_keys"] = [image_key]
     state["cover_path"] = str(cover_path)
     state["image_key"] = image_key
     state["current_review_message_id"] = new_message_id
