@@ -17,6 +17,8 @@ if str(SCRIPTS_DIR) not in sys.path:
 import common
 from xhs_customer_state import default_state, save_state
 
+DEFAULT_ACCOUNT_KEY = "primary"
+
 
 def _web_state_dir(client_slug: str):
     return common.ensure_dir(common.get_client_root(client_slug) / "state")
@@ -72,12 +74,15 @@ def _new_task_record(
     topic: str,
     audience: str,
     created_by_role: str,
+    account_key: str = DEFAULT_ACCOUNT_KEY,
 ) -> dict[str, Any]:
     task_id = uuid.uuid4().hex
     open_id = f"web_task_{task_id[:12]}"
+    account_key = str(account_key or DEFAULT_ACCOUNT_KEY)
     return {
         "task_id": task_id,
         "client_slug": client_slug,
+        "account_key": account_key,
         "title": title,
         "topic": topic,
         "audience": audience,
@@ -113,9 +118,10 @@ def create_task(
     topic: str,
     audience: str,
     created_by_role: str,
+    account_key: str = DEFAULT_ACCOUNT_KEY,
 ) -> dict[str, Any]:
     items = _load_list(tasks_path(client_slug))
-    task = _new_task_record(client_slug, title, topic, audience, created_by_role)
+    task = _new_task_record(client_slug, title, topic, audience, created_by_role, account_key=account_key)
     items.append(task)
     _save_list(tasks_path(client_slug), items)
     save_state(client_slug, task["open_id"], default_state())

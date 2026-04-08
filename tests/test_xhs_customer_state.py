@@ -30,6 +30,13 @@ class XhsCustomerStateTest(unittest.TestCase):
         self.assertEqual(state["current_state"], "state_0_topic")
         self.assertIsNone(state["confirmed"]["topic"])
         self.assertEqual(state["drafts"]["topics"], [])
+        self.assertEqual(
+            state["image_templates"],
+            {
+                "cover_template_key": "map_coverage",
+                "graphics_template_key": "classroom_focus",
+            },
+        )
 
     def test_save_and_load_round_trip_uses_feishu_dm_state_path(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:

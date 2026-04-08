@@ -13,9 +13,24 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 import common
-from web.repository import create_task, get_task, list_tasks, update_task
+from web.repository import DEFAULT_ACCOUNT_KEY, create_task, get_task, list_tasks, update_task
 from xhs_customer_router import route_message
 from xhs_customer_state import load_state, materials_gate_path
+
+
+def _load_runtime_snapshots(session_output_dir: str | None) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    if not session_output_dir:
+        return None, None
+
+    session_dir = common.resolve_path(session_output_dir)
+    if not session_dir or not session_dir.exists():
+        return None, None
+
+    review_state = common.load_json_file(session_dir / "review_state.json")
+    result = common.load_json_file(session_dir / "result.json")
+    review_snapshot = review_state if isinstance(review_state, dict) else None
+    result_snapshot = result if isinstance(result, dict) else None
+    return review_snapshot, result_snapshot
 
 
 def build_action_message(task: dict[str, Any], action: str, payload: dict[str, Any]) -> str:
@@ -43,6 +58,7 @@ def build_action_message(task: dict[str, Any], action: str, payload: dict[str, A
 
 def sync_task_from_runtime(client_slug: str, task: dict[str, Any]) -> dict[str, Any]:
     synced = deepcopy(task)
+    synced["account_key"] = str(synced.get("account_key") or DEFAULT_ACCOUNT_KEY)
     state = load_state(client_slug, task["open_id"])
     synced["current_state"] = state.get("current_state", synced.get("current_state"))
     synced["materials_ready"] = state.get("materials_ready", synced.get("materials_ready"))
@@ -51,21 +67,25 @@ def sync_task_from_runtime(client_slug: str, task: dict[str, Any]) -> dict[str, 
     synced["drafts"] = state.get("drafts", {})
 
     session_output_dir = state.get("session_output_dir")
-    if session_output_dir:
-        session_dir = common.resolve_path(session_output_dir) or common.resolve_path(session_output_dir)
-        if session_dir and session_dir.exists():
-            review_state = common.load_json_file(session_dir / "review_state.json")
-            result = common.load_json_file(session_dir / "result.json")
-            if isinstance(review_state, dict):
-                synced["review_message_id"] = review_state.get("current_review_message_id")
-                synced["review_status"] = review_state.get("status")
-            if isinstance(result, dict):
-                synced["runtime_status"] = result.get("status")
+    review_state, result = _load_runtime_snapshots(session_output_dir)
+    if isinstance(review_state, dict):
+        synced["review_message_id"] = review_state.get("current_review_message_id")
+        synced["review_status"] = review_state.get("status")
+    if isinstance(result, dict):
+        synced["runtime_status"] = result.get("status")
+    synced["status"] = synced.get("runtime_status") or synced.get("review_status") or synced.get("status") or "idle"
     return synced
 
 
-def create_web_task(client_slug: str, title: str, topic: str, audience: str, created_by_role: str) -> dict[str, Any]:
-    task = create_task(client_slug, title, topic, audience, created_by_role)
+def create_web_task(
+    client_slug: str,
+    title: str,
+    topic: str,
+    audience: str,
+    created_by_role: str,
+    account_key: str = DEFAULT_ACCOUNT_KEY,
+) -> dict[str, Any]:
+    task = create_task(client_slug, title, topic, audience, created_by_role, account_key=account_key)
     return sync_task_from_runtime(client_slug, task)
 
 
@@ -103,7 +123,10 @@ def run_task_action(
                 "materials_ready": synced.get("materials_ready"),
                 "session_output_dir": synced.get("session_output_dir"),
                 "review_message_id": synced.get("review_message_id"),
-                "status": synced.get("runtime_status") or synced.get("review_status") or "idle",
+                "review_status": synced.get("review_status"),
+                "runtime_status": synced.get("runtime_status"),
+                "status": synced.get("status"),
+                "account_key": synced.get("account_key"),
             },
         )
         return {"status": "ok", "action": "sync", "task": synced}
@@ -115,6 +138,7 @@ def run_task_action(
             {
                 "client_change_request": str(payload.get("message") or "").strip(),
                 "status": "needs_ops",
+                "account_key": task.get("account_key") or DEFAULT_ACCOUNT_KEY,
             },
         )
         return {"status": "ok", "action": "request-change", "task": updated}
@@ -133,7 +157,10 @@ def run_task_action(
         "materials_ready": synced.get("materials_ready"),
         "session_output_dir": synced.get("session_output_dir"),
         "review_message_id": synced.get("review_message_id"),
+        "review_status": synced.get("review_status"),
+        "runtime_status": synced.get("runtime_status"),
         "status": result.get("status", "idle"),
+        "account_key": synced.get("account_key"),
     }
     if result.get("status") == "blocked":
         update_patch["last_error"] = result.get("reason")

@@ -88,6 +88,47 @@ def review_state(
 class XhsFeishuFlowTest(unittest.TestCase):
     maxDiff = None
 
+    def test_generate_slide_images_uses_cover_plus_two_content_images_for_preset_topics(self) -> None:
+        payload = sample_payload()
+        topic_data = sample_preset_topic_data()
+
+        with TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            rendered_topics: list[dict[str, object]] = []
+
+            def fake_render_image(
+                topic: dict[str, object],
+                output_path: Path | str,
+                width: int = 1080,
+                height: int = 1440,
+            ) -> Path:
+                del width, height
+                rendered_topics.append(dict(topic))
+                target = Path(output_path)
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_bytes(b"png")
+                return target
+
+            with patch.object(xhs_feishu_flow, "render_image", side_effect=fake_render_image) as mock_render, patch.object(
+                xhs_feishu_flow, "render_topic_images", return_value=[run_dir / "slides" / "slide_1.png"]
+            ) as mock_render_topic_images:
+                images = xhs_feishu_flow.generate_slide_images(
+                    run_dir=run_dir,
+                    payload=payload,
+                    topic_data=topic_data,
+                    config={},
+                    dry_run=False,
+                    skip_image=False,
+                )
+
+        self.assertEqual(len(images), 3)
+        self.assertEqual([topic["style"] for topic in rendered_topics], ["promo_cover", "info_card", "info_card"])
+        self.assertEqual(rendered_topics[0]["title"], payload["cover_title"])
+        self.assertEqual(rendered_topics[1]["title"], payload["variants"][0]["title"])
+        self.assertEqual(rendered_topics[2]["title"], payload["variants"][2]["title"])
+        self.assertEqual(mock_render.call_count, 3)
+        mock_render_topic_images.assert_not_called()
+
     def test_main_accepts_refresh_actions_in_resume_mode(self) -> None:
         for action in ("refresh_cover", "refresh_graphics"):
             with self.subTest(action=action):
@@ -114,6 +155,38 @@ class XhsFeishuFlowTest(unittest.TestCase):
                 mock_resume.assert_called_once()
                 self.assertEqual(mock_resume.call_args.kwargs["action"], action)
                 self.assertIn("__JSON_RESULT__", stdout.getvalue())
+
+    def test_resume_review_action_reports_missing_review_state(self) -> None:
+        with patch.object(
+            xhs_feishu_flow,
+            "load_review_state",
+            side_effect=FileNotFoundError("找不到卡片状态索引: /tmp/missing.json"),
+        ), patch.object(
+            xhs_feishu_flow,
+            "_save_result",
+        ) as mock_save_result:
+            result = xhs_feishu_flow.resume_review_action("refresh_cover", "om_demo")
+
+        self.assertEqual(result["status"], "blocked")
+        self.assertEqual(result["reason"], "missing_review_state")
+        self.assertEqual(result["steps"]["action"], "refresh_cover")
+        self.assertEqual(result["steps"]["message_id"], "om_demo")
+        self.assertIsNone(result["task_dir"])
+        mock_save_result.assert_not_called()
+
+    def test_request_revision_notes_reports_missing_review_state(self) -> None:
+        with patch.object(
+            xhs_feishu_flow,
+            "load_review_state",
+            side_effect=FileNotFoundError("找不到卡片状态索引: /tmp/missing.json"),
+        ):
+            result = xhs_feishu_flow.request_revision_notes("modify", "om_demo")
+
+        self.assertEqual(result["status"], "blocked")
+        self.assertEqual(result["reason"], "missing_review_state")
+        self.assertEqual(result["steps"]["action"], "modify")
+        self.assertEqual(result["steps"]["message_id"], "om_demo")
+        self.assertIsNone(result["task_dir"])
 
     def test_resume_review_action_refresh_cover_keeps_payload_and_reissues_review_card(self) -> None:
         payload = sample_payload()

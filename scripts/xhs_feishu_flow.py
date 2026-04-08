@@ -274,14 +274,19 @@ def generate_slide_images(
 ) -> list[Path]:
     """生成多张幻灯片图片（使用 HTML 渲染引擎）。
 
-    如果匹配到预设选题（topic_data），使用 HTML 模板渲染；
+    如果匹配到预设选题（topic_data），按 payload 生成
+    1 张宣传封面图 + 2 张内容配图；
     否则回退到 AI 生图（单张封面）。
     """
     if topic_data:
-        # 使用 HTML 渲染引擎
         print(f"  🧠 渲染引擎: HTML模板 (style={topic_data.get('style', 'info_card')})")
         try:
-            images = render_topic_images(topic_data, run_dir / "slides", count=3)
+            style_hint = str(topic_data.get("style") or "info_card")
+            slide_topics = _build_payload_slide_topics(payload, style_hint)
+            images = [
+                render_image(topic, run_dir / "slides" / f"slide_{index}.png")
+                for index, topic in enumerate(slide_topics, start=1)
+            ]
             print(f"  ✅ {len(images)} 张幻灯片已生成")
             return images
         except Exception as e:
@@ -396,7 +401,10 @@ def request_revision_notes(
     """将当前审核卡切换为“修改说明卡”，等待用户补充修改意见。"""
     if action not in {"modify", "rewrite"}:
         raise ValueError("request_revision_notes 仅支持 modify/rewrite")
-    run_dir, state = load_review_state(message_id)
+    try:
+        run_dir, state = load_review_state(message_id)
+    except FileNotFoundError as e:
+        return _blocked_missing_review_state(action, message_id, e)
     current_message_id = state.get("current_review_message_id")
     if current_message_id != message_id:
         print(
@@ -775,6 +783,21 @@ def _blocked_image_refresh(
     return result
 
 
+def _blocked_missing_review_state(action: str, message_id: str, error: Exception) -> dict[str, Any]:
+    message = f"找不到卡片状态索引，无法继续处理: {error}"
+    print(f"  ⚠️  {message}")
+    return {
+        "status": "blocked",
+        "reason": "missing_review_state",
+        "message": message,
+        "task_dir": None,
+        "steps": {
+            "action": action,
+            "message_id": message_id,
+        },
+    }
+
+
 def _validate_multi_image_review_state(
     run_dir: Path,
     state: dict[str, Any],
@@ -955,7 +978,10 @@ def resume_review_action(
 ) -> dict[str, Any]:
     """根据卡片动作继续执行：approve / refresh_* / modify / rewrite。"""
 
-    run_dir, state = load_review_state(message_id)
+    try:
+        run_dir, state = load_review_state(message_id)
+    except FileNotFoundError as e:
+        return _blocked_missing_review_state(action, message_id, e)
     current_message_id = state.get("current_review_message_id")
     if current_message_id != message_id:
         print(

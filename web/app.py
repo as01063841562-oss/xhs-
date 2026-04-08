@@ -14,12 +14,13 @@ import uvicorn
 ROOT_DIR = Path(__file__).resolve().parents[1]
 SCRIPTS_DIR = ROOT_DIR / "scripts"
 if str(ROOT_DIR) not in sys.path:
-  sys.path.insert(0, str(ROOT_DIR))
+    sys.path.insert(0, str(ROOT_DIR))
 if str(SCRIPTS_DIR) not in sys.path:
-  sys.path.insert(0, str(SCRIPTS_DIR))
+    sys.path.insert(0, str(SCRIPTS_DIR))
 
 from web.auth import clear_session, load_access_config, require_role, role_for_token, session_role, set_session_role
 from web.job_runner import latest_job_for_task, start_job
+from web.repository import DEFAULT_ACCOUNT_KEY, get_task
 from web.services import create_web_task, list_synced_tasks, run_task_action, set_materials_gate, sync_task_from_runtime
 from xhs_customer_state import load_materials_ready
 
@@ -91,17 +92,23 @@ def build_app() -> FastAPI:
         title: str = Form(...),
         topic: str = Form(...),
         audience: str = Form("武汉家长"),
-        role: str = Form(...),
     ):
-        require_role(request, {"client", "ops"})
-        task = create_web_task(CLIENT_SLUG, title=title, topic=topic, audience=audience, created_by_role=role)
+        role = require_role(request, {"client", "ops"})
+        task = create_web_task(
+            CLIENT_SLUG,
+            title=title,
+            topic=topic,
+            audience=audience,
+            created_by_role=role,
+            account_key=DEFAULT_ACCOUNT_KEY,
+        )
         request.session["flash"] = f"任务已创建：{task['title']}"
         return RedirectResponse(f"/tasks/{task['task_id']}", status_code=303)
 
     @app.get("/tasks/{task_id}", response_class=HTMLResponse)
     def task_detail(request: Request, task_id: str):
         require_role(request, {"client", "ops"})
-        task = sync_task_from_runtime(CLIENT_SLUG, __import__("web.repository", fromlist=["get_task"]).get_task(CLIENT_SLUG, task_id))
+        task = sync_task_from_runtime(CLIENT_SLUG, get_task(CLIENT_SLUG, task_id))
         latest_job = latest_job_for_task(CLIENT_SLUG, task_id)
         return render(request, "task_detail.html", title="任务详情", task=task, latest_job=latest_job)
 

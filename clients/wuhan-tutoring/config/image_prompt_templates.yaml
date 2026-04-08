@@ -1,0 +1,88 @@
+defaults:
+  aspect_ratio: "3:4"
+  width: 1080
+  height: 1440
+  image_count:
+    cover: 1
+    graphics: 2
+  style_anchor: "武汉本地教培招生图文风"
+  negative_prompt: >
+    不要极简风，不要纯插画，不要韩系奶油风，不要科技蓝紫渐变，
+    不要高级品牌广告大片，不要弱标题，不要过度留白，不要小字排版，
+    不要抽象信息图，不要失去本地教培招生感。
+
+cover_templates:
+  map_coverage:
+    label: "地图覆盖型"
+    local_hint: "武汉本地校区分布地图、门店覆盖、就近规划中心"
+    sub_title_hint: "家门口更方便，就近安排更省心"
+    cta_text: "点击咨询领取专属方案"
+    prompt: >
+      {style_anchor}，3:4竖版，{size_text}，真实摄影感底图。
+      顶部放超大标题：{main_title}。
+      中上区域补一句副标题：{sub_title}。
+      主体画面表现 {local_hint}，画面里清楚展示武汉地图、门店覆盖或规划中心分布。
+      底部加入高对比行动条：{cta_text}。
+      整体像武汉本地教培机构真实投放图。
+  campus_access:
+    label: "校区门店型"
+    local_hint: "武汉校区门头、前台接待、家长到店咨询"
+    sub_title_hint: "校区可达，家长决策更直接"
+    cta_text: "预约测评了解就近校区"
+    prompt: >
+      {style_anchor}，3:4竖版，{size_text}，真实摄影感底图。
+      主标题：{main_title}。
+      副标题：{sub_title}。
+      画面主体是 {local_hint}，强调门店可达性和机构现场感。
+      底部保留高对比 CTA：{cta_text}。
+      整体是高转化招生封面，不要做品牌大片。
+  parent_consult:
+    label: "家长咨询型"
+    local_hint: "武汉家长与老师面对面咨询、升学规划沟通场景"
+    sub_title_hint: "家长最关心的方案和结果"
+    cta_text: "点击获取升学规划建议"
+    prompt: >
+      {style_anchor}，3:4竖版，{size_text}，真实摄影感底图。
+      顶部主标题：{main_title}。
+      补充一句副标题：{sub_title}。
+      主体画面是 {local_hint}，突出家长决策和专业咨询氛围。
+      底部有清晰 CTA 条：{cta_text}。
+      保持红橙黄黑白高对比，不要极简。
+
+graphics_templates:
+  classroom_focus:
+    label: "课堂讲解型"
+    service_scene: "课堂讲解、小班授课、老师板书讲题"
+    trust_scene: "真实教学现场、学生听课、老师授课细节"
+    cta_text: "了解课程细节和试听安排"
+  study_plan:
+    label: "方案讲解型"
+    service_scene: "老师与家长讲解专属提升方案、查漏补缺路径"
+    trust_scene: "老师团队围绕学习方案沟通、学情分析场景"
+    cta_text: "点击咨询专属提升方案"
+  brand_trust:
+    label: "师资背书型"
+    service_scene: "老师一对一答疑、教学服务说明"
+    trust_scene: "校区环境、老师团队、家长沟通、品牌展示"
+    cta_text: "预约测评了解师资与服务"
+
+content_templates:
+  service:
+    purpose: "内容配图-服务说明"
+    prompt: >
+      {style_anchor}，3:4竖版，{size_text}，真实课堂或咨询场景打底。
+      主标题：{main_title}。
+      画面主体是 {scene_hint}。
+      下方用2到4条短卖点展示：{selling_points}。
+      底部保留轻行动条：{cta_text}。
+      像本地教培图文第二张，不要抽象信息图。
+  trust:
+    purpose: "内容配图-信任背书"
+    prompt: >
+      {style_anchor}，3:4竖版，{size_text}，真实校区环境、老师团队、家长沟通或教学现场照片打底。
+      主标题：{main_title}。
+      副标题：{sub_title}。
+      下方用2到3条背书信息展示：{trust_points}。
+      主体画面突出 {trust_scene}。
+      底部保留轻 CTA：{cta_text}。
+      整体强调机构可信感、本地积累、师资与成果。

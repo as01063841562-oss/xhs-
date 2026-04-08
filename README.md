@@ -168,7 +168,7 @@ browser_image:
 - `playwright` 已安装
 - 本机能打开 Chrome 并连接远程调试端口
 
-如果你是直接调用 `scripts/xhs_feishu_flow.py`，请把 `gemini_image.backend` 保持为 `gemini_web`。这样初稿和修改 / 重写回流都会走同一条真实生图链路；只有你明确要实验 CLI 生图时，再单独切到 `gemini_cli`。
+如果你是直接调用 `scripts/xhs_feishu_flow.py`，请把 `gemini_image.backend` 保持为 `gemini_web`。这样初稿和刷新封面图 / 刷新内容配图回流都会走同一条真实生图链路；只有你明确要实验 CLI 生图时，再单独切到 `gemini_cli`。历史卡片上的 `modify / rewrite` 仍然兼容，但新按钮已经改成刷新语义。
 
 如果暂时还没打通文本模型，也可以直接注入本地生成好的素材包 JSON：
 
@@ -207,6 +207,8 @@ browser_image:
   --dry-run
 ```
 
+武汉客户的封面和内容配图提示词由 [clients/wuhan-tutoring/config/image_prompt_templates.yaml](/Users/lmsx/.config/superpowers/worktrees/edu-media-openclaw/codex-wuhan-xhs-workflow/clients/wuhan-tutoring/config/image_prompt_templates.yaml) 驱动，路由脚本会在 `state.image_templates.cover_template_key` 和 `state.image_templates.graphics_template_key` 里记录当前模板。要换封面或图文风格，优先改这个 YAML，比直接改脚本更稳。
+
 ### 5.2 武汉客户网页入口（第一期 MVP）
 
 第一期网页入口采用 `FastAPI + Jinja2 + HTMX`，直接复用当前脚本和文件态状态机。
@@ -217,10 +219,13 @@ browser_image:
 .venv/bin/python web/app.py --host 127.0.0.1 --port 8047
 ```
 
-启动后终端会打印两条链接：
+启动后终端会打印两条魔法链接：
 
-- `Ops link`
-- `Client link`
+- `Ops link` 进入运营端 `/ops`
+- `Client link` 进入客户端 `/client`
+
+这两个链接会把对应角色写进会话 cookie；token 本身保存在
+`clients/wuhan-tutoring/state/web_access.json`，必要时可以重新启动服务生成新的访问串。
 
 用法：
 
@@ -230,9 +235,11 @@ browser_image:
 第一期定位：
 
 - 单客户：只支持 `wuhan-tutoring`
-- 网页做运营主控
-- Feishu 继续承担通知和审核卡通道
+- Feishu 是主控和审核确认结果的事实源
+- 网页只做返工、可视化投影和运营操作台
 - 底层生成链路继续复用现有脚本，不做重写
+
+网页侧的任务记录会保留 `account_key` 作为未来多账号控制台的预留字段，但第一期仍按单账号默认值运行。
 
 ### 6. 安装为本地 OpenClaw skill
 

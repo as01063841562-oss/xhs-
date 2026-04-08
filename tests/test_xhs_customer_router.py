@@ -17,6 +17,7 @@ from xhs_customer_router import (
     classify_message,
     confirm_copywriting,
     generate_copywriting_draft,
+    generate_cover_draft,
     generate_graphic_draft,
     guard_materials_ready,
     route_message,
@@ -195,20 +196,26 @@ class XhsCustomerRouterTest(unittest.TestCase):
         self.assertEqual(state["drafts"]["graphic_images"], [])
 
     def test_generate_graphic_draft_creates_dedicated_graphics_dir(self) -> None:
-        state = {"drafts": {"graphic_images": []}}
+        state = {
+            "drafts": {"graphic_images": []},
+            "image_templates": {"cover_template_key": "map_coverage", "graphics_template_key": "classroom_focus"},
+        }
         payload = {"cover_title": "标题"}
 
         with TemporaryDirectory() as tmp:
             run_dir = Path(tmp)
             generated = generate_graphic_draft(payload, state, run_dir, dry_run=True)
 
-        self.assertEqual(len(generated), 3)
+        self.assertEqual(len(generated), 2)
         self.assertTrue(all(path.endswith(".png") for path in generated))
         self.assertEqual(state["drafts"]["graphic_images"], generated)
         self.assertTrue(all("graphics/graphic_" in path for path in generated))
 
-    def test_generate_graphic_draft_uses_renderer_outside_dry_run(self) -> None:
-        state = {"drafts": {"graphic_images": []}}
+    def test_generate_graphic_draft_uses_image_generator_outside_dry_run(self) -> None:
+        state = {
+            "drafts": {"graphic_images": []},
+            "image_templates": {"cover_template_key": "map_coverage", "graphics_template_key": "classroom_focus"},
+        }
         payload = {
             "cover_title": "标题",
             "hashtags": ["武汉中考", "数学"],
@@ -222,17 +229,37 @@ class XhsCustomerRouterTest(unittest.TestCase):
         with TemporaryDirectory() as tmp:
             run_dir = Path(tmp)
 
-            def fake_render(topic, output_path):
+            def fake_generate(prompt, output_path, config=None, allow_placeholder=True):
                 output_path.parent.mkdir(parents=True, exist_ok=True)
                 output_path.write_bytes(b"png")
                 return output_path
 
-            with patch("xhs_customer_router.render_image", side_effect=fake_render) as mock_render:
+            with patch("xhs_customer_router.generate_image", side_effect=fake_generate) as mock_generate:
                 generated = generate_graphic_draft(payload, state, run_dir, dry_run=False)
 
-        self.assertEqual(len(generated), 3)
-        self.assertEqual(mock_render.call_count, 3)
+        self.assertEqual(len(generated), 2)
+        self.assertEqual(mock_generate.call_count, 2)
         self.assertEqual(state["drafts"]["graphic_images"], generated)
+
+    def test_generate_cover_draft_cycles_cover_template_when_refreshing(self) -> None:
+        state = {
+            "drafts": {"cover_images": []},
+            "image_templates": {"cover_template_key": "map_coverage", "graphics_template_key": "classroom_focus"},
+        }
+        payload = {"cover_title": "标题", "variants": [{"angle": "副标题"}], "cover_prompt": "old"}
+
+        with patch("xhs_customer_router.generate_slide_images", return_value=[Path("/tmp/cover.png")]):
+            generated = generate_cover_draft(
+                run_dir=Path("/tmp"),
+                payload=payload,
+                config={},
+                state=state,
+                dry_run=True,
+                rotate_template=True,
+            )
+
+        self.assertEqual(generated, ["/tmp/cover.png"])
+        self.assertEqual(state["image_templates"]["cover_template_key"], "campus_access")
 
     def test_route_message_returns_summary_without_mutating_state(self) -> None:
         state = {

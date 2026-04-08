@@ -8,7 +8,6 @@
       <p class="muted">客户直接提交需求，进入武汉专属小红书工作流。</p>
     </div>
     <form method="post" action="/tasks" class="stack">
-      <input type="hidden" name="role" value="client">
       <label>任务标题<input name="title" required></label>
       <label>主题 / 需求<input name="topic" required></label>
       <label>目标受众<input name="audience" value="武汉家长"></label>
@@ -29,8 +28,10 @@
           <span class="pill">{{ task.current_state }}</span>
         </div>
         <div class="task-meta">
+          <span>账号: {{ task.account_key or "primary" }}</span>
           <span>状态: {{ task.status }}</span>
           <span>审核卡: {{ task.review_message_id or "无" }}</span>
+          <span>运行态: {{ task.runtime_status or "无" }}</span>
         </div>
       </a>
       {% else %}

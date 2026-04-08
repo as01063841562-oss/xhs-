@@ -31,6 +31,10 @@ def _state_template() -> dict[str, Any]:
             "cover_images": [],
             "graphic_images": [],
         },
+        "image_templates": {
+            "cover_template_key": "map_coverage",
+            "graphics_template_key": "classroom_focus",
+        },
         "last_revision_scope": None,
         "last_user_intent": None,
         "session_output_dir": None,

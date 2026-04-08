@@ -15,6 +15,7 @@ for path in (SCRIPT_DIR, WEB_DIR):
 
 import common
 from repository import create_task
+from repository import update_task
 from services import build_action_message, set_materials_gate, sync_task_from_runtime
 
 
@@ -40,6 +41,15 @@ class WebServicesTest(unittest.TestCase):
                     topic="武汉中考数学压轴题",
                     audience="武汉家长",
                     created_by_role="client",
+                    account_key="account-a",
+                )
+                update_task(
+                    "wuhan-tutoring",
+                    task["task_id"],
+                    {
+                        "current_state": "state_4_done",
+                        "status": "stale",
+                    },
                 )
                 state_path = (
                     common.get_client_root("wuhan-tutoring")
@@ -73,9 +83,11 @@ class WebServicesTest(unittest.TestCase):
                 synced = sync_task_from_runtime("wuhan-tutoring", task)
 
                 self.assertEqual(synced["current_state"], "state_1_copywriting")
+                self.assertEqual(synced["status"], "waiting_review")
                 self.assertTrue(synced["materials_ready"])
                 self.assertEqual(synced["review_message_id"], "om_test")
                 self.assertEqual(synced["runtime_status"], "waiting_review")
+                self.assertEqual(synced["account_key"], "account-a")
             finally:
                 common.CLIENTS_DIR = original_clients_dir
 

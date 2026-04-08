@@ -62,9 +62,11 @@ invalid ip 119.97.37.60, not in whitelist
 openclaw skills list
 ```
 
-## 6. 飞书卡片点了“修改 / 重写”但没继续
+## 6. 飞书卡片点了“刷新封面图 / 刷新内容配图”但没继续
 
 - 确认 OpenClaw / Feishu bridge 是最新代码
-- 确认卡片按钮 value 里有 `action=xhs_review` 或 `decision=modify|rewrite`
+- 确认卡片按钮 value 里有 `action=xhs_review` 或 `decision=refresh_cover|refresh_graphics`
+- 如果你点的是历史卡片，`modify|rewrite` 旧动作仍然兼容
 - 确认卡片交互消息里带了 `source_message_id`、`card_message_id` 或 `reply_to_message_id`
+- 如果消息里没有 `resume_command`，说明 bridge 还在跑旧逻辑，需要先重启再点一次
 - 如果还是没有回流，先重启 bridge，再点一次卡片按钮

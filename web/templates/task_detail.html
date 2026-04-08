@@ -11,8 +11,11 @@
     <div class="kv">
       <div><span>主题</span><strong>{{ task.topic }}</strong></div>
       <div><span>受众</span><strong>{{ task.audience }}</strong></div>
+      <div><span>账号</span><strong>{{ task.account_key or "primary" }}</strong></div>
       <div><span>素材闸门</span><strong>{{ "ready" if task.materials_ready else "blocked" }}</strong></div>
       <div><span>审核卡</span><strong>{{ task.review_message_id or "无" }}</strong></div>
+      <div><span>审核状态</span><strong>{{ task.review_status or "无" }}</strong></div>
+      <div><span>运行态</span><strong>{{ task.runtime_status or "无" }}</strong></div>
       <div><span>输出目录</span><strong>{{ task.session_output_dir or "未生成" }}</strong></div>
     </div>
 

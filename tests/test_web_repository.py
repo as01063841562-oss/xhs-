@@ -44,8 +44,29 @@ class WebRepositoryTest(unittest.TestCase):
                 self.assertEqual(loaded["title"], "武汉中考数学压轴题")
                 self.assertEqual(loaded["current_state"], "state_0_topic")
                 self.assertEqual(loaded["created_by_role"], "client")
+                self.assertEqual(loaded["account_key"], "primary")
                 self.assertTrue(task["open_id"].startswith("web_task_"))
                 self.assertEqual(state["current_state"], "state_0_topic")
+            finally:
+                common.CLIENTS_DIR = original_clients_dir
+
+    def test_create_task_preserves_custom_account_key(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            original_clients_dir = common.CLIENTS_DIR
+            try:
+                common.CLIENTS_DIR = Path(temp_dir) / "clients"
+
+                task = create_task(
+                    client_slug="wuhan-tutoring",
+                    title="武汉中考数学压轴题",
+                    topic="武汉中考数学压轴题",
+                    audience="武汉家长",
+                    created_by_role="client",
+                    account_key="account-a",
+                )
+
+                self.assertEqual(task["account_key"], "account-a")
+                self.assertEqual(get_task("wuhan-tutoring", task["task_id"])["account_key"], "account-a")
             finally:
                 common.CLIENTS_DIR = original_clients_dir
 
