@@ -11,7 +11,19 @@
       <label>任务标题<input name="title" required></label>
       <label>主题 / 需求<input name="topic" required></label>
       <label>目标受众<input name="audience" value="武汉家长"></label>
+      <label>账号键<input name="account_key" value="{{ account_key or 'primary' }}"></label>
       <button type="submit">创建任务</button>
+    </form>
+  </section>
+
+  <section class="panel">
+    <div class="section-head">
+      <h2>账号视图</h2>
+      <p class="muted">当前只看这个账号下的任务，方便后面扩成批量控制台。</p>
+    </div>
+    <form method="get" action="/ops" class="stack">
+      <label>切换账号键<input name="account_key" value="{{ account_key or 'primary' }}"></label>
+      <button type="submit">切换</button>
     </form>
   </section>
 
@@ -36,7 +48,7 @@
   <section class="panel">
     <div class="section-head">
       <h2>看板</h2>
-      <p class="muted">按任务跟踪当前阶段、审核卡和作业状态。</p>
+      <p class="muted">账号：{{ account_key or "primary" }} ｜ 按任务跟踪当前阶段、审核卡和作业状态。</p>
     </div>
     <div class="task-list">
       {% for task in tasks %}

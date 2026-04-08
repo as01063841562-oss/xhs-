@@ -11,6 +11,7 @@
       <label>任务标题<input name="title" required></label>
       <label>主题 / 需求<input name="topic" required></label>
       <label>目标受众<input name="audience" value="武汉家长"></label>
+      <label>账号键<input name="account_key" value="{{ account_key or 'primary' }}"></label>
       <button type="submit">提交任务</button>
     </form>
   </section>
@@ -18,8 +19,12 @@
   <section class="panel">
     <div class="section-head">
       <h2>我的任务</h2>
-      <p class="muted">查看当前阶段产物，并提交确认或修改请求。</p>
+      <p class="muted">账号：{{ account_key or "primary" }} ｜ 查看当前阶段产物，并提交确认或修改请求。</p>
     </div>
+    <form method="get" action="/client" class="stack">
+      <label>切换账号键<input name="account_key" value="{{ account_key or 'primary' }}"></label>
+      <button type="submit">切换</button>
+    </form>
     <div class="task-list">
       {% for task in tasks %}
       <a class="task-card" href="/tasks/{{ task.task_id }}">

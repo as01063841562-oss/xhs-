@@ -18,7 +18,16 @@ if str(ROOT_DIR) not in sys.path:
 if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
-from web.auth import clear_session, load_access_config, require_role, role_for_token, session_role, set_session_role
+from web.auth import (
+    clear_session,
+    load_access_config,
+    require_role,
+    role_for_token,
+    session_account_key,
+    session_role,
+    set_session_account_key,
+    set_session_role,
+)
 from web.job_runner import latest_job_for_task, start_job
 from web.repository import DEFAULT_ACCOUNT_KEY, get_task
 from web.services import create_web_task, list_synced_tasks, run_task_action, set_materials_gate, sync_task_from_runtime
@@ -69,22 +78,29 @@ def build_app() -> FastAPI:
         return RedirectResponse("/login?message=logged-out", status_code=303)
 
     @app.get("/ops", response_class=HTMLResponse)
-    def ops_dashboard(request: Request):
+    def ops_dashboard(request: Request, account_key: str | None = None):
         require_role(request, {"ops"})
-        tasks = list_synced_tasks(CLIENT_SLUG)
+        if account_key is not None:
+            set_session_account_key(request, account_key)
+        active_account_key = session_account_key(request)
+        tasks = list_synced_tasks(CLIENT_SLUG, account_key=active_account_key)
         return render(
             request,
             "ops.html",
             title="武汉教培运营看板",
             tasks=tasks,
+            account_key=active_account_key,
             materials_ready=bool(load_materials_ready(CLIENT_SLUG)),
         )
 
     @app.get("/client", response_class=HTMLResponse)
-    def client_dashboard(request: Request):
+    def client_dashboard(request: Request, account_key: str | None = None):
         require_role(request, {"client", "ops"})
-        tasks = list_synced_tasks(CLIENT_SLUG)
-        return render(request, "client.html", title="武汉教培客户视图", tasks=tasks)
+        if account_key is not None:
+            set_session_account_key(request, account_key)
+        active_account_key = session_account_key(request)
+        tasks = list_synced_tasks(CLIENT_SLUG, account_key=active_account_key)
+        return render(request, "client.html", title="武汉教培客户视图", tasks=tasks, account_key=active_account_key)
 
     @app.post("/tasks")
     def create_task_route(
@@ -92,15 +108,18 @@ def build_app() -> FastAPI:
         title: str = Form(...),
         topic: str = Form(...),
         audience: str = Form("武汉家长"),
+        account_key: str | None = Form(None),
     ):
         role = require_role(request, {"client", "ops"})
+        active_account_key = str(account_key or session_account_key(request)).strip() or DEFAULT_ACCOUNT_KEY
+        set_session_account_key(request, active_account_key)
         task = create_web_task(
             CLIENT_SLUG,
             title=title,
             topic=topic,
             audience=audience,
             created_by_role=role,
-            account_key=DEFAULT_ACCOUNT_KEY,
+            account_key=active_account_key,
         )
         request.session["flash"] = f"任务已创建：{task['title']}"
         return RedirectResponse(f"/tasks/{task['task_id']}", status_code=303)

@@ -100,8 +100,12 @@ def _new_task_record(
     }
 
 
-def list_tasks(client_slug: str) -> list[dict[str, Any]]:
+def list_tasks(client_slug: str, account_key: str | None = None) -> list[dict[str, Any]]:
     items = _load_list(tasks_path(client_slug))
+    if account_key is not None:
+        normalized = str(account_key).strip()
+        if normalized:
+            items = [item for item in items if str(item.get("account_key") or DEFAULT_ACCOUNT_KEY) == normalized]
     return list(reversed(items))
 
 

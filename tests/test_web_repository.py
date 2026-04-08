@@ -139,6 +139,36 @@ class WebRepositoryTest(unittest.TestCase):
             finally:
                 common.CLIENTS_DIR = original_clients_dir
 
+    def test_list_tasks_filters_by_account_key(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            original_clients_dir = common.CLIENTS_DIR
+            try:
+                common.CLIENTS_DIR = Path(temp_dir) / "clients"
+                create_task(
+                    client_slug="wuhan-tutoring",
+                    title="账号 A 任务",
+                    topic="账号 A 任务",
+                    audience="武汉家长",
+                    created_by_role="client",
+                    account_key="account-a",
+                )
+                create_task(
+                    client_slug="wuhan-tutoring",
+                    title="账号 B 任务",
+                    topic="账号 B 任务",
+                    audience="武汉家长",
+                    created_by_role="ops",
+                    account_key="account-b",
+                )
+
+                tasks = list_tasks("wuhan-tutoring", account_key="account-b")
+
+                self.assertEqual(len(tasks), 1)
+                self.assertEqual(tasks[0]["title"], "账号 B 任务")
+                self.assertEqual(tasks[0]["account_key"], "account-b")
+            finally:
+                common.CLIENTS_DIR = original_clients_dir
+
 
 if __name__ == "__main__":
     unittest.main()

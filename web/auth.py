@@ -13,6 +13,7 @@ if str(SCRIPTS_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPTS_DIR))
 
 from web.repository import ensure_access_config
+from web.repository import DEFAULT_ACCOUNT_KEY
 
 CLIENT_SLUG = "wuhan-tutoring"
 
@@ -33,6 +34,17 @@ def role_for_token(token: str, client_slug: str = CLIENT_SLUG) -> str | None:
 def set_session_role(request: Request, role: str, client_slug: str = CLIENT_SLUG) -> None:
     request.session["role"] = role
     request.session["client_slug"] = client_slug
+    request.session.setdefault("account_key", DEFAULT_ACCOUNT_KEY)
+
+
+def set_session_account_key(request: Request, account_key: str) -> None:
+    normalized = str(account_key or DEFAULT_ACCOUNT_KEY).strip() or DEFAULT_ACCOUNT_KEY
+    request.session["account_key"] = normalized
+
+
+def session_account_key(request: Request) -> str:
+    account_key = request.session.get("account_key")
+    return str(account_key or DEFAULT_ACCOUNT_KEY)
 
 
 def clear_session(request: Request) -> None:

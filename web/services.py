@@ -89,8 +89,8 @@ def create_web_task(
     return sync_task_from_runtime(client_slug, task)
 
 
-def list_synced_tasks(client_slug: str) -> list[dict[str, Any]]:
-    return [sync_task_from_runtime(client_slug, task) for task in list_tasks(client_slug)]
+def list_synced_tasks(client_slug: str, account_key: str | None = None) -> list[dict[str, Any]]:
+    return [sync_task_from_runtime(client_slug, task) for task in list_tasks(client_slug, account_key=account_key)]
 
 
 def set_materials_gate(client_slug: str, materials_ready: bool) -> dict[str, Any]:
