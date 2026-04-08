@@ -185,12 +185,51 @@ def _wait_for_visible_button(page, names: list[str], timeout_ms: int):
     raise GeminiWebImageError(f"等待按钮超时: {names}, last_error={last_error}")
 
 
+def _result_generation_in_progress(page) -> bool:
+    try:
+        stop_button = page.get_by_role("button", name=re.compile(r"대답 생성 중지|Stop generating|停止生成", re.I))
+        if stop_button.count() > 0 and stop_button.first.is_visible():
+            return True
+    except Exception:
+        pass
+    try:
+        body_text = page.locator("body").inner_text()
+    except Exception:
+        return False
+    return bool(re.search(r"Creating your image|Synthesizing Visual Elements|생성 중", body_text, re.I))
+
+
+def _wait_for_image_result_ready(page, timeout_ms: int) -> None:
+    deadline = time.time() + timeout_ms / 1000
+    last_state = "unknown"
+    while time.time() < deadline:
+        if _result_generation_in_progress(page):
+            last_state = "generating"
+            page.wait_for_timeout(2_000)
+            continue
+        try:
+            _wait_for_visible_button(
+                page,
+                ["이미지 복사", "Copy image", "원본 크기 이미지 다운로드", "Download original size image"],
+                2_000,
+            )
+            return
+        except Exception:
+            last_state = "no-save-action"
+            page.wait_for_timeout(2_000)
+    raise GeminiWebImageError(f"等待 Gemini 图片结果超时: {last_state}")
+
+
 def _first_clickable(page, locators, timeout_ms: int):
     last_error: Exception | None = None
     for locator in locators:
         try:
             target = locator.first if hasattr(locator, "first") else locator
-            target.click(timeout=timeout_ms)
+            if target.count() == 0:
+                continue
+            if not target.is_visible():
+                continue
+            target.click(timeout=min(timeout_ms, 5_000), force=True)
             return target
         except Exception as exc:  # pragma: no cover - best effort
             last_error = exc
@@ -503,11 +542,26 @@ def render_gemini_web_image(
         prompt_box.fill(prompt)
         page.wait_for_timeout(800)
         _send_prompt(page, prompt_box)
+        _wait_for_image_result_ready(page, page_timeout * 1000)
+
+        copy_button = _wait_for_visible_button(
+            page,
+            ["이미지 복사", "复制图片", "Copy image", "이미지 공유"],
+            10_000,
+        )
+        try:
+            copy_button.click(timeout=10_000, force=True)
+            time.sleep(1.5)
+            _save_clipboard_png(output_path)
+            _normalize_image(output_path, size)
+            return output_path
+        except Exception as exc:
+            print(f"  ⚠️  剪贴板保存失败，尝试原图下载: {exc}")
 
         download_button = _wait_for_visible_button(
             page,
             ["원본 크기 이미지 다운로드", "下载原始尺寸图片", "下载原图", "Download original size image", "원본 크기"],
-            page_timeout * 1000,
+            10_000,
         )
         try:
             with page.expect_download(timeout=20_000) as download_info:
@@ -517,21 +571,7 @@ def render_gemini_web_image(
             _normalize_image(output_path, size)
             return output_path
         except Exception as exc:
-            print(f"  ⚠️  原图下载失败，尝试剪贴板复制: {exc}")
-
-        copy_button = _wait_for_visible_button(
-            page,
-            ["이미지 복사", "复制图片", "Copy image", "이미지 공유"],
-            page_timeout * 1000,
-        )
-        try:
-            copy_button.click(timeout=10_000, force=True)
-            time.sleep(1.5)
-            _save_clipboard_png(output_path)
-            _normalize_image(output_path, size)
-            return output_path
-        except Exception as exc:
-            print(f"  ⚠️  剪贴板保存失败，尝试再次下载原图: {exc}")
+            print(f"  ⚠️  原图下载失败，尝试再次下载原图: {exc}")
 
         download_candidates = [
             page.get_by_role("button", name=re.compile(r"원본 크기 이미지 다운로드|다운로드|下载原始尺寸图片|下载原图|Download original size image|원본 크기", re.I)),

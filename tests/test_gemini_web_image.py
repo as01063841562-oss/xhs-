@@ -68,6 +68,8 @@ class FakePage:
         self.prompt_box = FakeLocator(attrs={"placeholder": prompt_placeholder})
         self.rich_prompt_box = FakeLocator(attrs={"contenteditable": "true"})
         self.style_button = FakeLocator()
+        self.stop_button = FakeLocator(count=0, visible=False)
+        self.image_copy_button = FakeLocator(count=0, visible=False, attrs={"aria-label": "이미지 복사"})
         self.body = FakeLocator(
             text="이미지에 어울리는 스타일을 고르세요" if style_picker_active else ""
         )
@@ -93,6 +95,12 @@ class FakePage:
         self.role_calls.append((role, name.pattern if hasattr(name, "pattern") else str(name) if name is not None else None))
         if role == "button" and isinstance(name, re.Pattern) and "이미지 만들기 선택 해제" in name.pattern:
             return self.image_mode_chip
+        if role == "button" and isinstance(name, re.Pattern) and "대답 생성 중지" in name.pattern:
+            return self.stop_button
+        if role == "button" and name == "이미지 복사":
+            return self.image_copy_button
+        if role == "button" and isinstance(name, re.Pattern) and "이미지 복사" in name.pattern:
+            return self.image_copy_button
         if role == "button" and isinstance(name, re.Pattern) and "천연색" in name.pattern:
             return self.style_button
         if role == "menuitemcheckbox" and isinstance(name, re.Pattern) and "이미지 만들기" in name.pattern:
@@ -116,6 +124,16 @@ class FakePage:
 
 
 class GeminiWebImageTest(unittest.TestCase):
+    def test_first_clickable_skips_hidden_candidate_and_uses_visible_one(self) -> None:
+        hidden = FakeLocator(visible=False)
+        visible = FakeLocator()
+
+        target = gemini_web_image._first_clickable(None, [hidden, visible], 2_000)
+
+        self.assertIs(target, visible)
+        self.assertEqual(hidden.click_count, 0)
+        self.assertEqual(visible.click_count, 1)
+
     def test_ensure_image_mode_opens_drawer_and_clicks_image_tile(self) -> None:
         page = FakePage(image_mode_active=False)
 
@@ -154,6 +172,36 @@ class GeminiWebImageTest(unittest.TestCase):
         gemini_web_image._ensure_image_style(page, 2_000)
 
         self.assertEqual(page.style_button.click_count, 1)
+
+    def test_wait_for_image_result_ready_waits_for_stop_to_clear_then_copy_button(self) -> None:
+        page = FakePage()
+        page.stop_button = FakeLocator(count=1, visible=True)
+        page.body = FakeLocator(text="Creating your image...")
+        page.image_copy_button = FakeLocator(count=0, visible=False, attrs={"aria-label": "이미지 복사"})
+        ready = {"value": False}
+
+        def advance_state(_ms: int) -> None:
+            page.stop_button = FakeLocator(count=0, visible=False)
+            page.body = FakeLocator(text="")
+            page.image_copy_button = FakeLocator(count=1, visible=True, attrs={"aria-label": "이미지 복사"})
+            ready["value"] = True
+            page.wait_calls.append(_ms)
+
+        page.wait_for_timeout = advance_state  # type: ignore[method-assign]
+
+        def fake_wait_for_visible_button(_page, _names, _timeout_ms):
+            if ready["value"]:
+                return page.image_copy_button
+            raise gemini_web_image.GeminiWebImageError("not ready")
+
+        original = gemini_web_image._wait_for_visible_button
+        gemini_web_image._wait_for_visible_button = fake_wait_for_visible_button
+        try:
+            gemini_web_image._wait_for_image_result_ready(page, 2_000)
+        finally:
+            gemini_web_image._wait_for_visible_button = original
+
+        self.assertGreaterEqual(len(page.wait_calls), 1)
 
 
 if __name__ == "__main__":
