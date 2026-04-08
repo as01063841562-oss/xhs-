@@ -1290,7 +1290,7 @@ def resume_review_action(
                 reason="no_distinct_graphics_lane",
                 message="当前任务没有独立内容配图可刷新，仅有单张封面图。",
             )
-        if not style_hint:
+        if not style_hint and not prompt_templates:
             return _blocked_image_refresh(
                 run_dir,
                 state,
