@@ -31,7 +31,8 @@ if str(SCRIPT_DIR) not in sys.path:
 from common import OUTPUT_DIR, ensure_dir, load_config, make_run_dir, save_json_file, save_text_file, timestamp
 from feishu_client import FeishuClient
 from gemini_image import generate_image, _generate_placeholder, GeminiImageError
-from xhs_image_prompts import build_cover_prompt, build_graphic_prompts, ensure_template_state, load_image_prompt_templates
+from xhs_image_prompts import build_cover_prompt, build_graphic_prompts, extract_sentences, ensure_template_state, load_image_prompt_templates
+from xhs_image_layouts import render_base_image_overlay
 from xhs_topic_generator import get_topic_by_title, get_topics_by_subject, WUHAN_TOPICS
 from xhs_image_renderer import render_image
 
@@ -285,6 +286,26 @@ def _build_review_prompt_state(image_templates: dict[str, Any] | None = None) ->
     return {"image_templates": _review_image_template_state(image_templates)}
 
 
+def _normalize_optional_path(path: str | Path | None) -> str | None:
+    if path in {None, ""}:
+        return None
+    return str(Path(path).expanduser())
+
+
+def _normalize_optional_paths(paths: list[str] | tuple[str, ...] | None) -> list[str]:
+    normalized: list[str] = []
+    for path in list(paths or []):
+        resolved = _normalize_optional_path(path)
+        if resolved:
+            normalized.append(resolved)
+    return normalized
+
+
+def _current_template_family(image_templates: dict[str, Any] | None, key: str) -> str:
+    state = _review_image_template_state(image_templates)
+    return state[key]
+
+
 def _render_prompt_image(
     prompt: str,
     target_path: Path,
@@ -325,6 +346,38 @@ def _render_prompt_cover(
     return _render_prompt_image(prompt, target_path, config, dry_run, skip_image)
 
 
+def _render_overlay_cover(
+    run_dir: Path,
+    payload: dict[str, Any],
+    image_templates: dict[str, Any] | None,
+    base_image_path: str,
+    refresh_index: int = 0,
+    current_cover_path: str | None = None,
+) -> Path:
+    fallback_path = run_dir / "slides" / "slide_1.png"
+    target_path = (
+        _versioned_artifact_path(current_cover_path, fallback_path, "refresh", refresh_index)
+        if refresh_index
+        else fallback_path
+    )
+    variants = payload.get("variants") or []
+    selling_points = extract_sentences(str((variants[0] or {}).get("body") or ""), 3) if variants else []
+    sub_title = str((variants[0] or {}).get("angle") or "") if variants else ""
+    templates = load_image_prompt_templates(DEFAULT_REVIEW_CLIENT_SLUG)
+    cover_templates = templates.get("cover_templates") or {}
+    family = _current_template_family(image_templates, "cover_template_key")
+    template = cover_templates.get(family) or {}
+    return render_base_image_overlay(
+        base_image_path=base_image_path,
+        output_path=target_path,
+        template_family=family,
+        main_title=str(payload.get("cover_title") or payload.get("title") or ""),
+        sub_title=sub_title or str(template.get("sub_title_hint") or ""),
+        selling_points=selling_points,
+        cta_text=str(template.get("cta_text") or "点击咨询领取专属方案"),
+    )
+
+
 def _render_prompt_graphics(
     run_dir: Path,
     payload: dict[str, Any],
@@ -348,6 +401,46 @@ def _render_prompt_graphics(
             else fallback_path
         )
         rendered_paths.append(_render_prompt_image(prompt, target_path, config, dry_run, skip_image))
+    return rendered_paths
+
+
+def _render_overlay_graphics(
+    run_dir: Path,
+    payload: dict[str, Any],
+    image_templates: dict[str, Any] | None,
+    graphic_base_image_paths: list[str],
+    refresh_index: int = 0,
+    current_graphic_paths: list[str] | None = None,
+) -> list[Path]:
+    templates = load_image_prompt_templates(DEFAULT_REVIEW_CLIENT_SLUG)
+    family = _current_template_family(image_templates, "graphics_template_key")
+    graphics_templates = templates.get("graphics_templates") or {}
+    template = graphics_templates.get(family) or {}
+    variants = payload.get("variants") or []
+    current_graphic_paths = list(current_graphic_paths or [])
+    rendered_paths: list[Path] = []
+
+    for index, base_path in enumerate(graphic_base_image_paths[:2], start=2):
+        fallback_path = run_dir / "slides" / f"slide_{index}.png"
+        current_path = current_graphic_paths[index - 2] if index - 2 < len(current_graphic_paths) else None
+        target_path = (
+            _versioned_artifact_path(current_path, fallback_path, "refresh", refresh_index)
+            if refresh_index
+            else fallback_path
+        )
+        variant = variants[index - 2] if index - 2 < len(variants) else {}
+        rendered_paths.append(
+            render_base_image_overlay(
+                base_image_path=base_path,
+                output_path=target_path,
+                template_family=family,
+                main_title=str(variant.get("title") or payload.get("cover_title") or ""),
+                sub_title=str(variant.get("angle") or payload.get("cover_title") or ""),
+                selling_points=extract_sentences(str(variant.get("body") or ""), 4),
+                trust_points=extract_sentences(str(variant.get("body") or ""), 4),
+                cta_text=str(template.get("cta_text") or "点击咨询专属提升方案"),
+            )
+        )
     return rendered_paths
 
 
@@ -381,6 +474,73 @@ def _render_prompt_slide_set(
     return rendered_paths
 
 
+def _render_mixed_slide_set(
+    run_dir: Path,
+    payload: dict[str, Any],
+    config: dict[str, Any],
+    dry_run: bool,
+    skip_image: bool,
+    image_templates: dict[str, Any] | None = None,
+    cover_base_image_path: str | None = None,
+    graphic_base_image_paths: list[str] | None = None,
+    marker: str = "rev",
+    version_index: int = 0,
+    current_slide_paths: list[str] | None = None,
+) -> list[Path]:
+    current_slide_paths = list(current_slide_paths or [])
+    cover_current = current_slide_paths[0] if current_slide_paths else None
+    graphic_current = current_slide_paths[1:] if len(current_slide_paths) > 1 else []
+
+    cover_path = (
+        _render_overlay_cover(
+            run_dir=run_dir,
+            payload=payload,
+            image_templates=image_templates,
+            base_image_path=cover_base_image_path,
+            refresh_index=version_index if marker != "init" else 0,
+            current_cover_path=cover_current,
+        )
+        if cover_base_image_path
+        else _render_prompt_cover(
+            run_dir=run_dir,
+            payload=payload,
+            config=config,
+            dry_run=dry_run,
+            skip_image=skip_image,
+            image_templates=image_templates,
+            refresh_index=version_index if marker != "init" else 0,
+            current_cover_path=cover_current,
+        )
+    )
+
+    overlay_graphics = _render_overlay_graphics(
+        run_dir=run_dir,
+        payload=payload,
+        image_templates=image_templates,
+        graphic_base_image_paths=_normalize_optional_paths(graphic_base_image_paths),
+        refresh_index=version_index if marker != "init" else 0,
+        current_graphic_paths=graphic_current,
+    )
+    prompt_graphics = _render_prompt_graphics(
+        run_dir=run_dir,
+        payload=payload,
+        config=config,
+        dry_run=dry_run,
+        skip_image=skip_image,
+        image_templates=image_templates,
+        refresh_index=version_index if marker != "init" else 0,
+        current_graphic_paths=graphic_current,
+    )
+    graphics: list[Path] = []
+    for index in range(2):
+        if index < len(overlay_graphics):
+            graphics.append(overlay_graphics[index])
+        else:
+            graphics.append(prompt_graphics[index])
+
+    return [cover_path, *graphics]
+
+
 def generate_slide_images(
     run_dir: Path,
     payload: dict[str, Any],
@@ -389,6 +549,8 @@ def generate_slide_images(
     dry_run: bool,
     skip_image: bool,
     image_templates: dict[str, Any] | None = None,
+    cover_base_image_path: str | None = None,
+    graphic_base_image_paths: list[str] | None = None,
 ) -> list[Path]:
     """生成多张幻灯片图片。
 
@@ -399,13 +561,15 @@ def generate_slide_images(
     del topic_data
     try:
         print("  🧠 渲染引擎: 客户 prompt 模板 (cover + graphics)")
-        images = _render_prompt_slide_set(
+        images = _render_mixed_slide_set(
             run_dir=run_dir,
             payload=payload,
             config=config,
             dry_run=dry_run,
             skip_image=skip_image,
             image_templates=image_templates,
+            cover_base_image_path=_normalize_optional_path(cover_base_image_path),
+            graphic_base_image_paths=_normalize_optional_paths(graphic_base_image_paths),
             marker="init",
             version_index=0,
         )
@@ -949,6 +1113,8 @@ def run_flow(
     skip_image: bool = False,
     auto_approve: bool = False,
     config_path: str | None = None,
+    base_image_path: str | None = None,
+    graphic_base_image_paths: list[str] | None = None,
 ) -> dict[str, Any]:
     """执行初稿阶段：生成素材包 + 多图渲染、发审核卡、保存状态后暂停。"""
 
@@ -975,6 +1141,8 @@ def run_flow(
     else:
         payload = generate_xhs_payload(topic, audience, config, dry_run)
     review_image_templates = _review_image_template_state()
+    cover_base_image_path = _normalize_optional_path(base_image_path)
+    graphic_base_image_paths = _normalize_optional_paths(graphic_base_image_paths)
 
     run_dir = make_run_dir("xhs_feishu", topic)
     save_json_file(run_dir / "payload.json", payload)
@@ -1002,6 +1170,8 @@ def run_flow(
             dry_run,
             skip_image,
             image_templates=review_image_templates,
+            cover_base_image_path=cover_base_image_path,
+            graphic_base_image_paths=graphic_base_image_paths,
         )
     except (GeminiImageError, Exception) as e:
         print(f"  ❌ 图片生成失败: {e}")
@@ -1072,6 +1242,8 @@ def run_flow(
         "slide_paths": [str(p) for p in slide_paths],
         "image_keys": image_keys,
         "image_templates": review_image_templates,
+        "cover_base_image_path": cover_base_image_path,
+        "graphic_base_image_paths": graphic_base_image_paths,
         # 向后兼容
         "cover_path": str(slide_paths[0]),
         "image_key": image_keys[0] if image_keys else "",
@@ -1202,11 +1374,22 @@ def resume_review_action(
             return invalid_state
         prompt_templates = _persisted_image_templates(state)
         style_hint = _persisted_review_style_hint(state)
+        cover_base_image_path = _normalize_optional_path(state.get("cover_base_image_path"))
+        graphic_base_image_paths = _normalize_optional_paths(state.get("graphic_base_image_paths"))
 
         if action == "refresh_cover":
             refresh_index = int(state.get("cover_refresh_count", 0)) + 1
             try:
-                if prompt_templates:
+                if cover_base_image_path:
+                    cover_path = _render_overlay_cover(
+                        run_dir=run_dir,
+                        payload=payload,
+                        image_templates=prompt_templates,
+                        base_image_path=cover_base_image_path,
+                        refresh_index=refresh_index,
+                        current_cover_path=state.get("cover_path"),
+                    )
+                elif prompt_templates:
                     cover_path = _render_prompt_cover(
                         run_dir=run_dir,
                         payload=payload,
@@ -1310,7 +1493,28 @@ def resume_review_action(
                 message="当前任务的内容配图轨道不完整，无法安全地只刷新内容配图。",
             )
         try:
-            if prompt_templates:
+            if graphic_base_image_paths:
+                refreshed_graphics = _render_overlay_graphics(
+                    run_dir=run_dir,
+                    payload=payload,
+                    image_templates=prompt_templates,
+                    graphic_base_image_paths=graphic_base_image_paths,
+                    refresh_index=refresh_index,
+                    current_graphic_paths=current_graphic_paths,
+                )
+                if len(refreshed_graphics) < graphic_slot_count:
+                    fallback_graphics = _render_prompt_graphics(
+                        run_dir=run_dir,
+                        payload=payload,
+                        config=config,
+                        dry_run=effective_dry_run,
+                        skip_image=skip_image,
+                        image_templates=prompt_templates,
+                        refresh_index=refresh_index,
+                        current_graphic_paths=current_graphic_paths,
+                    )
+                    refreshed_graphics.extend(fallback_graphics[len(refreshed_graphics):graphic_slot_count])
+            elif prompt_templates:
                 refreshed_graphics = _render_prompt_graphics(
                     run_dir=run_dir,
                     payload=payload,
@@ -1421,6 +1625,8 @@ def resume_review_action(
     style_hint = _persisted_review_style_hint(state)
     prompt_templates = _persisted_image_templates(state)
     current_image_keys = _normalized_image_keys(state)
+    cover_base_image_path = _normalize_optional_path(state.get("cover_base_image_path"))
+    graphic_base_image_paths = _normalize_optional_paths(state.get("graphic_base_image_paths"))
     regenerated_slide_paths: list[Path] | None = None
     regenerated_image_keys: list[str] | None = None
 
@@ -1440,13 +1646,15 @@ def resume_review_action(
     if prompt_templates:
         revision_index = int(state.get("revision_count", 0)) + 1
         try:
-            regenerated_slide_paths = _render_prompt_slide_set(
+            regenerated_slide_paths = _render_mixed_slide_set(
                 run_dir=run_dir,
                 payload=new_payload,
                 config=config,
                 dry_run=effective_dry_run,
                 skip_image=skip_image,
                 image_templates=prompt_templates,
+                cover_base_image_path=cover_base_image_path,
+                graphic_base_image_paths=graphic_base_image_paths,
                 marker="rev",
                 version_index=revision_index,
                 current_slide_paths=current_slide_paths,
@@ -1596,6 +1804,8 @@ def main():
     parser.add_argument("--audience", default="教育行业运营负责人", help="目标人群")
     parser.add_argument("--dry-run", action="store_true", help="本地测试模式")
     parser.add_argument("--skip-image", action="store_true", help="跳过真实生图，改用占位图")
+    parser.add_argument("--base-image", default=None, help="客户提供的封面底图路径")
+    parser.add_argument("--graphic-base-image", action="append", default=None, help="客户提供的正文配图底图路径，可传多次")
     parser.add_argument("--json", action="store_true", help="以 JSON 格式输出结果")
     parser.add_argument(
         "--mode",
@@ -1689,6 +1899,8 @@ def main():
         skip_image=args.skip_image,
         auto_approve=args.auto_approve,
         config_path=args.config,
+        base_image_path=args.base_image,
+        graphic_base_image_paths=args.graphic_base_image,
     )
     if args.json:
         print("__JSON_RESULT__")

@@ -67,16 +67,28 @@ _DEFAULT_IMAGE_TEMPLATE_CONFIG = {
     },
     "graphics_templates": {
         "classroom_focus": {
+            "layout_mode": "真实课堂/校区照片打底 + 叠字信息块",
+            "headline_style": "白字或黄字大标题 + 黑描边，配短标签块",
+            "accent_palette": "红橙黄标题 + 白字信息块，黑底半透明遮罩辅助可读",
+            "prompt": "实拍底图 + 叠字信息块，用真实课堂和教学现场做底，保留3到5块可快速扫读的信息。",
             "service_scene": "课堂讲解、小班授课、老师板书讲题",
             "trust_scene": "真实教学现场、学生听课、老师授课细节",
             "cta_text": "了解课程细节和试听安排",
         },
         "study_plan": {
+            "layout_mode": "痛点 vs 解决动作分栏，3到5块内容，强对比",
+            "headline_style": "痛点词和解决动作用短句大字分层强调",
+            "accent_palette": "蓝白底 + 红色强调痛点，黑字辅助说明",
+            "prompt": "痛点-解决动作结构，上半区先写家长/学生痛点，下半区给解决动作，全图只保留3到5块。",
             "service_scene": "老师与家长讲解专属提升方案、查漏补缺路径",
             "trust_scene": "老师团队围绕学习方案沟通、学情分析场景",
             "cta_text": "点击咨询专属提升方案",
         },
         "brand_trust": {
+            "layout_mode": "蓝白分块信息卡，3到5块内容，快读优先",
+            "headline_style": "蓝底白字或白底蓝字的大字标题，短句直给",
+            "accent_palette": "蓝白主色，黑字辅助，少量红色仅用于重点提醒",
+            "prompt": "蓝白信息卡，3到5块信息块，家长一眼扫懂，像本地教培常见的课程说明图。",
             "service_scene": "老师一对一答疑、教学服务说明",
             "trust_scene": "校区环境、老师团队、家长沟通、品牌展示",
             "cta_text": "预约测评了解师资与服务",
@@ -179,6 +191,9 @@ def _build_cover_prompt(
         sub_title=sub_title,
         local_hint=template.get("local_hint", "武汉本地校区、家长咨询、教培服务场景"),
         cta_text=template.get("cta_text", "点击咨询领取专属方案"),
+        layout_mode=template.get("layout_mode", "高密度教培投放封面"),
+        headline_style=template.get("headline_style", "短句粗黑大字、描边排版"),
+        accent_palette=template.get("accent_palette", "红橙黄主色 + 黑白支撑"),
     )
 
 
@@ -202,6 +217,10 @@ def _build_graphic_prompts(
         size_text=_size_text(templates),
         main_title=service_variant.get("title") or payload.get("cover_title") or "",
         selling_points=_format_prompt_list(_extract_sentences(str(service_variant.get("body") or ""), 3)),
+        family_prompt=graphics_template.get("prompt", "蓝白信息卡，3到5块信息块，家长一眼扫懂"),
+        layout_mode=graphics_template.get("layout_mode", "蓝白分块信息卡，3到5块内容"),
+        headline_style=graphics_template.get("headline_style", "短句大字"),
+        accent_palette=graphics_template.get("accent_palette", "蓝白主色"),
         scene_hint=graphics_template.get("service_scene", "课堂讲解、小班授课、老师板书讲题"),
         cta_text=graphics_template.get("cta_text", "了解课程细节和试听安排"),
     )
@@ -211,6 +230,10 @@ def _build_graphic_prompts(
         main_title=trust_variant.get("title") or payload.get("cover_title") or "",
         sub_title=trust_variant.get("angle") or payload.get("cover_title") or "",
         trust_points=_format_prompt_list(_extract_sentences(str(trust_variant.get("body") or ""), 3)),
+        family_prompt=graphics_template.get("prompt", "蓝白信息卡，3到5块信息块，家长一眼扫懂"),
+        layout_mode=graphics_template.get("layout_mode", "蓝白分块信息卡，3到5块内容"),
+        headline_style=graphics_template.get("headline_style", "短句大字"),
+        accent_palette=graphics_template.get("accent_palette", "蓝白主色"),
         trust_scene=graphics_template.get("trust_scene", "校区环境、老师团队、家长沟通或教学现场"),
         cta_text=graphics_template.get("cta_text", "点击咨询专属提升方案"),
     )

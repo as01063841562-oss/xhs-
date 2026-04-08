@@ -166,12 +166,12 @@ class GeminiWebImageTest(unittest.TestCase):
 
         self.assertIs(prompt_box, page.rich_prompt_box)
 
-    def test_ensure_image_style_clicks_default_style_when_style_picker_visible(self) -> None:
+    def test_ensure_image_style_keeps_style_picker_unselected(self) -> None:
         page = FakePage(style_picker_active=True)
 
         gemini_web_image._ensure_image_style(page, 2_000)
 
-        self.assertEqual(page.style_button.click_count, 1)
+        self.assertEqual(page.style_button.click_count, 0)
 
     def test_wait_for_image_result_ready_waits_for_stop_to_clear_then_copy_button(self) -> None:
         page = FakePage()

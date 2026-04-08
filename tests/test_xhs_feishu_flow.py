@@ -139,6 +139,41 @@ class XhsFeishuFlowTest(unittest.TestCase):
         self.assertIn("真实校区环境、老师团队、家长沟通或教学现场照片打底", generated_prompts[2])
         self.assertIn(str(payload["variants"][1]["title"]), generated_prompts[2])
 
+    def test_generate_slide_images_uses_base_image_for_cover_and_prompt_for_graphics(self) -> None:
+        payload = sample_payload()
+        with TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            base_image = run_dir / "base-cover.png"
+            base_image.write_bytes(b"img")
+
+            with patch.object(
+                xhs_feishu_flow,
+                "render_base_image_overlay",
+                side_effect=lambda **kwargs: Path(kwargs["output_path"]),
+            ) as mock_overlay, patch.object(
+                xhs_feishu_flow,
+                "_render_prompt_graphics",
+                return_value=[run_dir / "slides" / "slide_2.png", run_dir / "slides" / "slide_3.png"],
+            ) as mock_prompt_graphics:
+                slides = xhs_feishu_flow.generate_slide_images(
+                    run_dir=run_dir,
+                    payload=payload,
+                    topic_data=None,
+                    config={},
+                    dry_run=False,
+                    skip_image=False,
+                    image_templates={
+                        "cover_template_key": "promo_blast",
+                        "graphics_template_key": "info_card_blue",
+                    },
+                    cover_base_image_path=str(base_image),
+                )
+
+        self.assertEqual([path.name for path in slides], ["slide_1.png", "slide_2.png", "slide_3.png"])
+        mock_overlay.assert_called_once()
+        self.assertEqual(mock_overlay.call_args.kwargs["template_family"], "promo_blast")
+        mock_prompt_graphics.assert_called_once()
+
     def test_generate_slide_images_raises_when_prompt_templates_fail(self) -> None:
         payload = sample_payload()
         topic_data = sample_preset_topic_data()
@@ -290,6 +325,41 @@ class XhsFeishuFlowTest(unittest.TestCase):
         mock_send_revision.assert_not_called()
         mock_upload.assert_called_once()
         feishu.send_review_card.assert_called_once()
+
+    def test_resume_review_action_refresh_cover_uses_cover_base_image_overlay(self) -> None:
+        payload = sample_payload()
+        with TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            state = review_state(run_dir, payload)
+            state["cover_base_image_path"] = str(run_dir / "cover-base.png")
+            Path(state["cover_base_image_path"]).write_bytes(b"img")
+            feishu = MagicMock()
+            feishu.send_review_card.return_value = "msg_cover_refresh_overlay"
+
+            with patch.object(xhs_feishu_flow, "load_review_state", return_value=(run_dir, state)), patch.object(
+                xhs_feishu_flow, "load_config", return_value={}
+            ), patch.object(
+                xhs_feishu_flow, "render_base_image_overlay", side_effect=lambda **kwargs: Path(kwargs["output_path"])
+            ) as mock_overlay, patch.object(
+                xhs_feishu_flow, "generate_image"
+            ) as mock_generate, patch.object(
+                xhs_feishu_flow, "upload_slide_images", return_value=["img_cover_new"]
+            ) as mock_upload, patch.object(
+                xhs_feishu_flow, "FeishuClient", return_value=feishu
+            ), patch.object(
+                xhs_feishu_flow, "save_review_state"
+            ), patch.object(
+                xhs_feishu_flow, "_save_result"
+            ), patch.object(
+                xhs_feishu_flow, "timestamp", return_value="2026-04-08T10:07:00"
+            ):
+                result = xhs_feishu_flow.resume_review_action("refresh_cover", "msg_current")
+
+        self.assertEqual(result["status"], "waiting_review")
+        self.assertEqual(state["current_review_message_id"], "msg_cover_refresh_overlay")
+        mock_overlay.assert_called_once()
+        mock_generate.assert_not_called()
+        mock_upload.assert_called_once()
 
     def test_resume_review_action_refresh_cover_uses_current_payload_for_preset_layout(self) -> None:
         payload = sample_payload()
@@ -583,6 +653,54 @@ class XhsFeishuFlowTest(unittest.TestCase):
         self.assertIn("真实校区环境、老师团队、家长沟通或教学现场照片打底", generated_prompts[1])
         mock_upload.assert_called_once()
         feishu.send_review_card.assert_called_once()
+
+    def test_resume_review_action_refresh_graphics_uses_graphic_base_images_when_present(self) -> None:
+        payload = sample_payload()
+        with TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            cover_path = run_dir / "slides" / "slide_1.png"
+            graphic_one = run_dir / "slides" / "slide_2.png"
+            graphic_two = run_dir / "slides" / "slide_3.png"
+            state = review_state(
+                run_dir,
+                payload,
+                slide_paths=[str(cover_path), str(graphic_one), str(graphic_two)],
+                image_keys=["img_cover_old", "img_graphic_old_1", "img_graphic_old_2"],
+                topic_data_style=None,
+            )
+            state["graphic_base_image_paths"] = [
+                str(run_dir / "graphic-base-1.png"),
+                str(run_dir / "graphic-base-2.png"),
+            ]
+            for path in state["graphic_base_image_paths"]:
+                Path(path).write_bytes(b"img")
+            feishu = MagicMock()
+            feishu.send_review_card.return_value = "msg_graphics_refresh_overlay"
+
+            with patch.object(xhs_feishu_flow, "load_review_state", return_value=(run_dir, state)), patch.object(
+                xhs_feishu_flow, "load_config", return_value={}
+            ), patch.object(
+                xhs_feishu_flow, "render_base_image_overlay", side_effect=lambda **kwargs: Path(kwargs["output_path"])
+            ) as mock_overlay, patch.object(
+                xhs_feishu_flow, "generate_image"
+            ) as mock_generate, patch.object(
+                xhs_feishu_flow, "upload_slide_images", return_value=["img_graphic_new_1", "img_graphic_new_2"]
+            ) as mock_upload, patch.object(
+                xhs_feishu_flow, "FeishuClient", return_value=feishu
+            ), patch.object(
+                xhs_feishu_flow, "save_review_state"
+            ), patch.object(
+                xhs_feishu_flow, "_save_result"
+            ), patch.object(
+                xhs_feishu_flow, "timestamp", return_value="2026-04-08T10:08:00"
+            ):
+                result = xhs_feishu_flow.resume_review_action("refresh_graphics", "msg_current")
+
+        self.assertEqual(result["status"], "waiting_review")
+        self.assertEqual(state["current_review_message_id"], "msg_graphics_refresh_overlay")
+        self.assertEqual(mock_overlay.call_count, 2)
+        mock_generate.assert_not_called()
+        mock_upload.assert_called_once()
 
     def test_resume_review_action_refresh_graphics_blocks_without_persisted_style_metadata(self) -> None:
         payload = sample_payload()

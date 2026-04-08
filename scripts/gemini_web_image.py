@@ -439,26 +439,10 @@ def _wait_for_image_prompt_box(page, timeout_ms: int):
     raise GeminiWebImageError(f"找不到 Gemini 图片描述输入框: {last_error}")
 
 
-def _style_picker_visible(page) -> bool:
-    """判断 Gemini 是否仍停留在图片风格选择界面。"""
-    try:
-        body_text = page.locator("body").inner_text()
-    except Exception:
-        return False
-    return "이미지에 어울리는 스타일을 고르세요" in body_text
-
-
-def _ensure_image_style(page, timeout_ms: int, style_name: str = "천연색") -> None:
-    """在图片模式下选择一个默认风格，触发提示词输入框出现。"""
-    if not _style_picker_visible(page):
-        return
-
-    style_candidates = [
-        page.get_by_role("button", name=re.compile(re.escape(style_name), re.I)),
-        page.get_by_text(re.compile(re.escape(style_name), re.I)),
-    ]
-    _first_clickable(page, style_candidates, timeout_ms)
-    page.wait_for_timeout(1_000)
+def _ensure_image_style(page, timeout_ms: int, style_name: str = "") -> None:
+    """保留 Gemini 默认风格，不再自动点击任何风格预设。"""
+    del page, timeout_ms, style_name
+    return
 
 
 def _send_prompt(page, prompt_box, timeout_ms: int = 15_000) -> bool:
