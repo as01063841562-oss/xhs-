@@ -281,13 +281,14 @@ class XhsCustomerRouterTest(unittest.TestCase):
                 ],
             }
 
-            def fake_generate(prompt, output_path, config=None, allow_placeholder=True):
+            def fake_generate(prompt, output_path, config=None, allow_placeholder=True, reference_image_paths=None):
                 del config, allow_placeholder
                 Path(output_path).parent.mkdir(parents=True, exist_ok=True)
                 Path(output_path).write_bytes(b"png")
                 self.assertIn("严格参考参考素材的颜色、版式和信息密度", prompt)
                 self.assertIn("减少文字堆叠", prompt)
                 self.assertIn("校区环境实拍图作为主体", prompt)
+                self.assertEqual(reference_image_paths, [str(reference_one), str(reference_two)])
                 return Path(output_path)
 
             with patch("xhs_customer_router.generate_image", side_effect=fake_generate) as mock_generate:
@@ -335,13 +336,14 @@ class XhsCustomerRouterTest(unittest.TestCase):
             }
             payload = {"cover_title": "标题", "variants": [{"angle": "副标题", "body": "第一点。第二点。第三点。"}], "cover_prompt": "old"}
 
-            def fake_generate(prompt, output_path, config=None, allow_placeholder=True):
+            def fake_generate(prompt, output_path, config=None, allow_placeholder=True, reference_image_paths=None):
                 del config, allow_placeholder
                 Path(output_path).parent.mkdir(parents=True, exist_ok=True)
                 Path(output_path).write_bytes(b"png")
                 self.assertIn("严格参考参考素材的颜色、版式和信息密度", prompt)
                 self.assertIn("减少文字堆叠", prompt)
                 self.assertIn("校区环境实拍图作为主体", prompt)
+                self.assertEqual(reference_image_paths, [str(reference_cover)])
                 return Path(output_path)
 
             with patch("xhs_customer_router.generate_slide_images"

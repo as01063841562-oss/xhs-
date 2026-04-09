@@ -52,6 +52,29 @@ class FakeLocator:
         self._attrs[name] = value
 
 
+class FakeFileChooser:
+    def __init__(self, *, multiple: bool = True) -> None:
+        self._multiple = multiple
+        self.files: list[str] = []
+
+    def is_multiple(self) -> bool:
+        return self._multiple
+
+    def set_files(self, files) -> None:
+        self.files = list(files)
+
+
+class FakeFileChooserContext:
+    def __init__(self, chooser: FakeFileChooser) -> None:
+        self.value = chooser
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb) -> bool:
+        return False
+
+
 class FakePage:
     def __init__(
         self,
@@ -68,6 +91,9 @@ class FakePage:
         self.prompt_box = FakeLocator(attrs={"placeholder": prompt_placeholder})
         self.rich_prompt_box = FakeLocator(attrs={"contenteditable": "true"})
         self.style_button = FakeLocator()
+        self.upload_menu_button = FakeLocator()
+        self.upload_menu_item = FakeLocator()
+        self.file_chooser = FakeFileChooser()
         self.stop_button = FakeLocator(count=0, visible=False)
         self.image_copy_button = FakeLocator(count=0, visible=False, attrs={"aria-label": "이미지 복사"})
         self.body = FakeLocator(
@@ -103,6 +129,16 @@ class FakePage:
             return self.image_copy_button
         if role == "button" and isinstance(name, re.Pattern) and "천연색" in name.pattern:
             return self.style_button
+        if role == "button" and (
+            (isinstance(name, re.Pattern) and "파일 업로드 메뉴 열기" in name.pattern)
+            or name == "파일 업로드 메뉴 열기"
+        ):
+            return self.upload_menu_button
+        if role == "menuitem" and (
+            (isinstance(name, re.Pattern) and "파일 업로드" in name.pattern)
+            or name == "파일 업로드"
+        ):
+            return self.upload_menu_item
         if role == "menuitemcheckbox" and isinstance(name, re.Pattern) and "이미지 만들기" in name.pattern:
             return self.image_mode_menu_item
         if role == "button" and isinstance(name, re.Pattern) and "이미지 만들기" in name.pattern:
@@ -121,6 +157,10 @@ class FakePage:
 
     def wait_for_timeout(self, ms: int) -> None:
         self.wait_calls.append(ms)
+
+    def expect_file_chooser(self, timeout: int = 0):
+        del timeout
+        return FakeFileChooserContext(self.file_chooser)
 
 
 class GeminiWebImageTest(unittest.TestCase):
@@ -172,6 +212,15 @@ class GeminiWebImageTest(unittest.TestCase):
         gemini_web_image._ensure_image_style(page, 2_000)
 
         self.assertEqual(page.style_button.click_count, 0)
+
+    def test_attach_reference_images_uses_file_chooser_upload(self) -> None:
+        page = FakePage()
+
+        gemini_web_image._attach_reference_images(page, ["/tmp/ref1.jpg", "/tmp/ref2.jpg"], 2_000)
+
+        self.assertEqual(page.upload_menu_button.click_count, 1)
+        self.assertEqual(page.upload_menu_item.click_count, 1)
+        self.assertEqual(page.file_chooser.files, ["/tmp/ref1.jpg", "/tmp/ref2.jpg"])
 
     def test_wait_for_image_result_ready_waits_for_stop_to_clear_then_copy_button(self) -> None:
         page = FakePage()

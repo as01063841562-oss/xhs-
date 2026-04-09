@@ -445,6 +445,29 @@ def _ensure_image_style(page, timeout_ms: int, style_name: str = "") -> None:
     return
 
 
+def _attach_reference_images(page, image_paths: list[str], timeout_ms: int) -> None:
+    paths = [str(Path(path).expanduser()) for path in list(image_paths or []) if str(path).strip()]
+    if not paths:
+        return
+
+    upload_menu_button = page.get_by_role(
+        "button",
+        name=re.compile(r"파일 업로드 메뉴 열기|Open file upload menu|打开文件上传菜单|文件上传菜单", re.I),
+    ).first
+    upload_menu_item = page.get_by_role(
+        "menuitem",
+        name=re.compile(r"파일 업로드|Upload file|Upload files|文件上传", re.I),
+    ).first
+
+    upload_menu_button.click(timeout=min(timeout_ms, 10_000), force=True)
+    page.wait_for_timeout(500)
+    with page.expect_file_chooser(timeout=min(timeout_ms, 10_000)) as chooser_info:
+        upload_menu_item.click(timeout=min(timeout_ms, 10_000), force=True)
+    chooser = chooser_info.value
+    chooser.set_files(paths)
+    page.wait_for_timeout(1_500)
+
+
 def _send_prompt(page, prompt_box, timeout_ms: int = 15_000) -> bool:
     """把提示词发送给 Gemini。
 
@@ -494,6 +517,7 @@ def render_gemini_web_image(
     output_path: str | Path,
     size: tuple[int, int],
     settings: dict[str, Any] | None = None,
+    reference_image_paths: list[str] | None = None,
 ) -> Path:
     """通过 Gemini 网页生成图片并保存到指定路径。"""
     cfg = _settings(settings)
@@ -521,6 +545,7 @@ def render_gemini_web_image(
 
         _ensure_image_mode(page, page_timeout * 1000)
         _ensure_image_style(page, page_timeout * 1000)
+        _attach_reference_images(page, list(reference_image_paths or []), page_timeout * 1000)
         prompt_box = _wait_for_image_prompt_box(page, page_timeout * 1000)
 
         prompt_box.fill(prompt)

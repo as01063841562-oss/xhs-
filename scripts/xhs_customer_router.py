@@ -683,7 +683,13 @@ def generate_cover_draft(
             _write_placeholder_png(target)
             cover_images = [str(target)]
         else:
-            cover_image = generate_image(payload["cover_prompt"], target, config=config, allow_placeholder=True)
+            cover_image = generate_image(
+                payload["cover_prompt"],
+                target,
+                config=config,
+                allow_placeholder=True,
+                reference_image_paths=list((reference_materials or {}).get("local_image_paths") or []),
+            )
             cover_images = [str(cover_image)]
     else:
         images = generate_slide_images(
@@ -738,7 +744,13 @@ def generate_graphic_draft(
             if dry_run:
                 _write_placeholder_png(target)
             else:
-                generate_image(prompt, target, config=config, allow_placeholder=True)
+                generate_image(
+                    prompt,
+                    target,
+                    config=config,
+                    allow_placeholder=True,
+                    reference_image_paths=list((reference_materials or {}).get("local_image_paths") or []),
+                )
             generated.append(str(target))
     else:
         for filename, prompt in prompt_specs:
