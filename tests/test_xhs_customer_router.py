@@ -73,6 +73,19 @@ class XhsCustomerRouterTest(unittest.TestCase):
             "graphic_request",
         )
 
+    def test_classify_message_detects_reference_image_requests_by_stage(self) -> None:
+        cover_state = {"current_state": "state_2_cover"}
+        graphic_state = {"current_state": "state_3_graphics"}
+
+        self.assertEqual(
+            classify_message("按这个参考图生成 /tmp/reference-cover.png", cover_state)["intent"],
+            "cover_request",
+        )
+        self.assertEqual(
+            classify_message("按这个参考图生成 /tmp/reference-graphic.png", graphic_state)["intent"],
+            "graphic_request",
+        )
+
     def test_classify_message_detects_feedback_and_fallback(self) -> None:
         self.assertEqual(
             classify_message("标题换一个", self.state)["intent"],
@@ -241,6 +254,42 @@ class XhsCustomerRouterTest(unittest.TestCase):
         self.assertEqual(mock_generate.call_count, 2)
         self.assertEqual(state["drafts"]["graphic_images"], generated)
 
+    def test_generate_graphic_draft_uses_reference_images_for_strict_mode(self) -> None:
+        with TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            reference_one = run_dir / "reference-1.png"
+            reference_two = run_dir / "reference-2.png"
+            reference_one.write_bytes(b"img")
+            reference_two.write_bytes(b"img")
+            state = {
+                "drafts": {"graphic_images": []},
+                "image_templates": {"cover_template_key": "map_coverage", "graphics_template_key": "classroom_focus"},
+                "reference_materials": {
+                    "stage_hint": "state_3_graphics",
+                    "instruction": "颜色和排版按参考图来",
+                    "links": [],
+                    "local_image_paths": [str(reference_one), str(reference_two)],
+                    "style_profile": {"top_colors": [[12, 34, 56]]},
+                    "updated_at": "20260408-000000",
+                },
+            }
+            payload = {
+                "cover_title": "标题",
+                "variants": [
+                    {"title": "图1", "angle": "角度1", "body": "第一点。第二点。第三点。"},
+                    {"title": "图2", "angle": "角度2", "body": "A。B。C。"},
+                ],
+            }
+
+            with patch("xhs_customer_router.render_base_image_overlay", side_effect=lambda **kwargs: Path(kwargs["output_path"])) as mock_overlay, patch(
+                "xhs_customer_router.generate_image"
+            ) as mock_generate:
+                generated = generate_graphic_draft(payload, state, run_dir, dry_run=False)
+
+        self.assertEqual(len(generated), 2)
+        self.assertEqual(mock_overlay.call_count, 2)
+        mock_generate.assert_not_called()
+
     def test_generate_cover_draft_cycles_cover_template_when_refreshing(self) -> None:
         state = {
             "drafts": {"cover_images": []},
@@ -260,6 +309,40 @@ class XhsCustomerRouterTest(unittest.TestCase):
 
         self.assertEqual(generated, ["/tmp/cover.png"])
         self.assertEqual(state["image_templates"]["cover_template_key"], "campus_access")
+
+    def test_generate_cover_draft_uses_reference_image_for_strict_mode(self) -> None:
+        with TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            reference_cover = run_dir / "reference-cover.png"
+            reference_cover.write_bytes(b"img")
+            state = {
+                "drafts": {"cover_images": []},
+                "image_templates": {"cover_template_key": "map_coverage", "graphics_template_key": "classroom_focus"},
+                "reference_materials": {
+                    "stage_hint": "state_2_cover",
+                    "instruction": "颜色和版式按参考图",
+                    "links": [],
+                    "local_image_paths": [str(reference_cover)],
+                    "style_profile": {"top_colors": [[12, 34, 56]]},
+                    "updated_at": "20260408-000000",
+                },
+            }
+            payload = {"cover_title": "标题", "variants": [{"angle": "副标题", "body": "第一点。第二点。第三点。"}], "cover_prompt": "old"}
+
+            with patch("xhs_customer_router.render_base_image_overlay", side_effect=lambda **kwargs: Path(kwargs["output_path"])) as mock_overlay, patch(
+                "xhs_customer_router.generate_slide_images"
+            ) as mock_generate_slide_images:
+                generated = generate_cover_draft(
+                    run_dir=run_dir,
+                    payload=payload,
+                    config={},
+                    state=state,
+                    dry_run=False,
+                )
+
+        self.assertEqual(len(generated), 1)
+        self.assertEqual(mock_overlay.call_count, 1)
+        mock_generate_slide_images.assert_not_called()
 
     def test_route_message_returns_summary_without_mutating_state(self) -> None:
         state = {
@@ -508,6 +591,97 @@ class XhsCustomerRouterTest(unittest.TestCase):
         self.assertEqual(state["confirmed"]["graphics"], ["g1.png", "g2.png"])
         self.assertTrue(result["state_changed"])
         mock_save.assert_not_called()
+
+    def test_route_message_stores_reference_materials_for_graphic_request(self) -> None:
+        with TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            reference_image = run_dir / "reference.png"
+            reference_image.write_bytes(b"img")
+            state = {
+                "materials_ready": True,
+                "current_state": "state_3_graphics",
+                "confirmed": {
+                    "topic": "初三数学必考：二次函数题型全梳理",
+                    "title": None,
+                    "copywriting": {"cover_title": "标题", "variants": [{"title": "版本1"}]},
+                    "cover": ["cover1.png"],
+                    "graphics": None,
+                },
+                "drafts": {
+                    "topics": [],
+                    "copywriting": {"cover_title": "标题", "variants": [{"title": "版本1"}]},
+                    "cover_images": ["cover1.png"],
+                    "graphic_images": [],
+                },
+                "reference_materials": {
+                    "stage_hint": None,
+                    "instruction": "",
+                    "links": [],
+                    "local_image_paths": [],
+                    "style_profile": None,
+                    "updated_at": "",
+                },
+            }
+
+            with patch("xhs_customer_router.load_state", return_value=state), patch(
+                "xhs_customer_router.save_state"
+            ) as mock_save, patch("xhs_customer_router.ensure_session_dir", return_value=run_dir), patch(
+                "xhs_customer_router.generate_graphic_draft", return_value=["g1.png", "g2.png"]
+            ) as mock_generate:
+                result = route_message(
+                    client_slug="wuhan-tutoring",
+                    open_id="ou_test",
+                    message=f"按这个参考图生成配图 {reference_image}",
+                    dry_run=False,
+                )
+
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["action"], "generate_graphic_draft")
+        self.assertEqual(state["reference_materials"]["stage_hint"], "state_3_graphics")
+        self.assertEqual(state["reference_materials"]["local_image_paths"], [str(reference_image)])
+        mock_generate.assert_called_once()
+        mock_save.assert_called_once()
+
+    def test_route_message_keeps_multiple_reference_paths_with_spaces(self) -> None:
+        with TemporaryDirectory() as tmp:
+            run_dir = Path(tmp)
+            reference_one = run_dir / "ref one.jpg"
+            reference_two = run_dir / "ref two.jpg"
+            reference_one.write_bytes(b"img")
+            reference_two.write_bytes(b"img")
+            state = {
+                "materials_ready": True,
+                "current_state": "state_3_graphics",
+                "confirmed": {
+                    "topic": "参考配图验收",
+                    "title": None,
+                    "copywriting": {"cover_title": "标题", "variants": [{"title": "版本1"}]},
+                    "cover": ["cover1.png"],
+                    "graphics": None,
+                },
+                "drafts": {
+                    "topics": [],
+                    "copywriting": {"cover_title": "标题", "variants": [{"title": "版本1"}]},
+                    "cover_images": ["cover1.png"],
+                    "graphic_images": [],
+                },
+            }
+
+            with patch("xhs_customer_router.load_state", return_value=state), patch(
+                "xhs_customer_router.save_state"
+            ), patch("xhs_customer_router.ensure_session_dir", return_value=run_dir), patch(
+                "xhs_customer_router._analyze_reference_images", return_value={"top_colors": [[12, 34, 56]]}
+            ), patch(
+                "xhs_customer_router.generate_graphic_draft", return_value=["g1.png", "g2.png"]
+            ):
+                route_message(
+                    client_slug="wuhan-tutoring",
+                    open_id="ou_test",
+                    message=f"按这个参考图生成配图 {reference_one} {reference_two}",
+                    dry_run=False,
+                )
+
+        self.assertEqual(state["reference_materials"]["local_image_paths"], [str(reference_one), str(reference_two)])
 
 
 if __name__ == "__main__":

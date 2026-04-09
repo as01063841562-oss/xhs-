@@ -5,10 +5,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
+
+import requests
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 if str(SCRIPT_DIR) not in sys.path:
@@ -19,6 +23,7 @@ from xhs_feedback_parser import parse_feedback
 from xhs_customer_state import ensure_session_dir, load_state, save_state
 from xhs_feishu_flow import generate_slide_images, generate_xhs_payload
 from gemini_image import generate_image
+from xhs_image_layouts import render_base_image_overlay
 from xhs_topic_generator import (
     get_all_subjects,
     get_random_topics,
@@ -28,12 +33,15 @@ from xhs_topic_generator import (
 
 _TOPIC_HINTS = ("中考", "学科", "押题", "知识点")
 _FEEDBACK_HINTS = ("修改", "换一个", "换个", "回到文案", "重新来", "汇总")
+_REFERENCE_HINTS = ("参考", "按这个", "照这个", "同款", "链接", "图片", "配色", "颜色", "排版", "风格")
 TOPIC_STATE = "state_0_topic"
 COPYWRITING_STATE = "state_1_copywriting"
 COVER_STATE = "state_2_cover"
 GRAPHIC_STATE = "state_3_graphics"
 DONE_STATE = "state_4_done"
 DEFAULT_AUDIENCE = "武汉家长"
+_URL_PATTERN = re.compile(r"https?://[^\s]+", re.I)
+_LOCAL_IMAGE_PATTERN = re.compile(r"((?:~|/)[^\n]+?\.(?:png|jpg|jpeg|webp))", re.I)
 _MINIMAL_PNG = bytes.fromhex(
     "89504E470D0A1A0A0000000D49484452000000010000000108060000001F15C489"
     "0000000D49444154789C63F8FFFFFF7F0009FB03FD2A86E38A0000000049454E44AE426082"
@@ -172,6 +180,185 @@ def _format_prompt_list(values: list[str]) -> str:
     return "；".join(value for value in values if value)
 
 
+def _trim_reference_token(value: str) -> str:
+    return str(value or "").strip().rstrip("，。；;！!）)]】》\"'")
+
+
+def _extract_reference_urls(text: str) -> list[str]:
+    return [_trim_reference_token(match.group(0)) for match in _URL_PATTERN.finditer(text or "")]
+
+
+def _extract_reference_local_candidates(text: str) -> list[str]:
+    return [_trim_reference_token(match.group(1)) for match in _LOCAL_IMAGE_PATTERN.finditer(text or "")]
+
+
+def _extract_reference_local_paths(text: str) -> list[str]:
+    candidates = _extract_reference_local_candidates(text)
+    resolved: list[str] = []
+    for candidate in candidates:
+        path = Path(candidate).expanduser()
+        if path.exists() and path.is_file():
+            resolved.append(str(path))
+    return resolved
+
+
+def _looks_like_image_url(url: str) -> bool:
+    path = urlparse(url).path.lower()
+    return path.endswith((".png", ".jpg", ".jpeg", ".webp"))
+
+
+def _download_reference_image(url: str, run_dir: Path, index: int) -> str | None:
+    try:
+        response = requests.get(url, timeout=20)
+        response.raise_for_status()
+    except Exception:
+        return None
+
+    suffix = Path(urlparse(url).path).suffix.lower()
+    if suffix not in {".png", ".jpg", ".jpeg", ".webp"}:
+        suffix = ".jpg"
+    target = common.ensure_dir(run_dir / "reference_inputs") / f"ref_{index}{suffix}"
+    target.write_bytes(response.content)
+    return str(target)
+
+
+def _extract_preview_image_url(url: str) -> str | None:
+    try:
+        response = requests.get(url, timeout=20)
+        response.raise_for_status()
+    except Exception:
+        return None
+
+    html = response.content.decode("utf-8", errors="ignore")
+    for pattern in (
+        r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']',
+        r'<meta[^>]+name=["\']twitter:image["\'][^>]+content=["\']([^"\']+)["\']',
+    ):
+        match = re.search(pattern, html, re.I)
+        if match:
+            return match.group(1).strip()
+    return None
+
+
+def _analyze_reference_images(image_paths: list[str]) -> dict[str, Any] | None:
+    if not image_paths:
+        return None
+
+    from PIL import Image
+
+    palette: dict[tuple[int, int, int], int] = {}
+    sizes: list[list[int]] = []
+    for image_path in image_paths:
+        try:
+            with Image.open(image_path) as image:
+                rgb = image.convert("RGB")
+                sizes.append([rgb.width, rgb.height])
+                reduced = rgb.resize((24, 24))
+                for y in range(reduced.height):
+                    for x in range(reduced.width):
+                        pixel = reduced.getpixel((x, y))
+                        palette[pixel] = palette.get(pixel, 0) + 1
+        except Exception:
+            continue
+
+    if not sizes:
+        return None
+
+    top_colors = [list(color) for color, _count in sorted(palette.items(), key=lambda item: item[1], reverse=True)[:6]]
+    width, height = sizes[0] if sizes else [1080, 1440]
+    if height > width:
+        layout_hint = "竖版海报感、强主标题、上下分区明确"
+    elif width > height:
+        layout_hint = "横版信息卡布局，左右分区明显"
+    else:
+        layout_hint = "方版居中构图、标题和信息块紧凑排布"
+    return {
+        "top_colors": top_colors,
+        "common_sizes": sizes[:4],
+        "layout_hint": layout_hint,
+    }
+
+
+def _strip_reference_material_tokens(message: str) -> str:
+    text = str(message or "")
+    text = _URL_PATTERN.sub(" ", text)
+    text = _LOCAL_IMAGE_PATTERN.sub(" ", text)
+    return " ".join(text.split()).strip()
+
+
+def _build_reference_materials(
+    message: str,
+    run_dir: Path,
+    stage_hint: str,
+) -> dict[str, Any] | None:
+    links = _extract_reference_urls(message)
+    local_image_paths = _extract_reference_local_paths(message)
+    unresolved_links: list[str] = []
+
+    for index, url in enumerate(links, start=1):
+        if _looks_like_image_url(url):
+            downloaded = _download_reference_image(url, run_dir, index)
+            if downloaded:
+                local_image_paths.append(downloaded)
+                continue
+        preview_url = _extract_preview_image_url(url)
+        if preview_url:
+            downloaded = _download_reference_image(preview_url, run_dir, index)
+            if downloaded:
+                local_image_paths.append(downloaded)
+                continue
+        unresolved_links.append(url)
+
+    deduped_paths: list[str] = []
+    for path in local_image_paths:
+        if path not in deduped_paths:
+            deduped_paths.append(path)
+
+    instruction = _strip_reference_material_tokens(message)
+    if not deduped_paths and not unresolved_links:
+        return None
+
+    return {
+        "stage_hint": stage_hint,
+        "instruction": instruction,
+        "links": unresolved_links or links,
+        "local_image_paths": deduped_paths,
+        "style_profile": _analyze_reference_images(deduped_paths),
+        "updated_at": common.timestamp(),
+    }
+
+
+def _active_reference_materials(state: dict[str, Any], stage_hint: str) -> dict[str, Any] | None:
+    materials = state.get("reference_materials")
+    if not isinstance(materials, dict):
+        return None
+    if not materials.get("updated_at"):
+        return None
+    if materials.get("stage_hint") not in {None, stage_hint, "all"}:
+        return None
+    return materials
+
+
+def _reference_style_note(materials: dict[str, Any] | None) -> str:
+    if not isinstance(materials, dict):
+        return ""
+    style_profile = materials.get("style_profile") or {}
+    top_colors = style_profile.get("top_colors") or []
+    layout_hint = style_profile.get("layout_hint") or ""
+    links = materials.get("links") or []
+    instruction = str(materials.get("instruction") or "").strip()
+    notes = ["严格参考参考素材的颜色、版式和信息密度，不要自行改成别的视觉语言。"]
+    if top_colors:
+        notes.append(f"主色参考：{top_colors[:4]}。")
+    if layout_hint:
+        notes.append(f"排版倾向：{layout_hint}。")
+    if instruction:
+        notes.append(f"结合客户需求：{instruction}。")
+    if links:
+        notes.append(f"参考链接：{links[:3]}。")
+    return " ".join(notes)
+
+
 def _build_cover_prompt(
     payload: dict[str, Any],
     state: dict[str, Any],
@@ -264,18 +451,31 @@ def build_state_summary(state: dict[str, Any]) -> str:
     current_revision_scope = state.get("last_revision_scope")
     if current_revision_scope is not None:
         lines.append(f"- current_revision_scope: {_jsonish(current_revision_scope)}")
+    reference_materials = state.get("reference_materials") or {}
+    if reference_materials:
+        lines.append(f"- reference_stage: {_jsonish(reference_materials.get('stage_hint'))}")
+        lines.append(f"- reference_links: {_jsonish(reference_materials.get('links'))}")
+        lines.append(f"- reference_images: {_jsonish(reference_materials.get('local_image_paths'))}")
     return "\n".join(lines)
 
 
 def classify_message(message: str, state: dict[str, Any]) -> dict[str, Any]:
     text = (message or "").strip()
     current_state = state.get("current_state", "")
+    has_reference_assets = bool(_extract_reference_urls(text) or _extract_reference_local_candidates(text))
+    has_reference_hint = any(hint in text for hint in _REFERENCE_HINTS)
 
     if any(hint in text for hint in _FEEDBACK_HINTS):
         return {
             "intent": "feedback_request",
             "feedback": parse_feedback(text, current_state),
         }
+
+    if has_reference_assets and (has_reference_hint or current_state in {COVER_STATE, GRAPHIC_STATE}):
+        if "封面" in text or current_state == COVER_STATE:
+            return {"intent": "cover_request", "reference_mode": "strict"}
+        if "配图" in text or "图片" in text or current_state == GRAPHIC_STATE:
+            return {"intent": "graphic_request", "reference_mode": "strict"}
 
     if (
         current_state == COVER_STATE
@@ -395,7 +595,7 @@ def _select_topic_option(message: str, topics: list[dict[str, Any]]) -> dict[str
         r"第\s*([12345一二三四五])",
         r"选\s*([12345一二三四五])",
     ):
-        match = __import__("re").search(pattern, message)
+        match = re.search(pattern, message)
         if not match:
             continue
         index = _ORDINAL_MAP.get(match.group(1))
@@ -458,6 +658,7 @@ def generate_cover_draft(
 ) -> list[str]:
     templates = load_image_prompt_templates(client_slug)
     template_state = _ensure_template_state(state, templates)
+    reference_materials = _active_reference_materials(state, COVER_STATE)
     if rotate_template:
         cover_keys = list((templates.get("cover_templates") or {}).keys())
         template_state["cover_template_key"] = _cycle_template_key(
@@ -466,15 +667,33 @@ def generate_cover_draft(
         )
     payload = deepcopy(payload)
     payload["cover_prompt"] = _build_cover_prompt(payload, state, client_slug)
-    images = generate_slide_images(
-        run_dir=run_dir,
-        payload=payload,
-        topic_data=None,
-        config=config,
-        dry_run=dry_run,
-        skip_image=skip_image,
-    )
-    cover_images = [str(path) for path in images]
+    reference_paths = list((reference_materials or {}).get("local_image_paths") or [])
+    if reference_materials:
+        payload["cover_prompt"] = f"{payload['cover_prompt']} {_reference_style_note(reference_materials)}".strip()
+    if reference_paths:
+        cover_templates = templates.get("cover_templates") or {}
+        cover_template = cover_templates.get(template_state["cover_template_key"]) or {}
+        target = run_dir / "cover.png"
+        cover_image = render_base_image_overlay(
+            base_image_path=reference_paths[0],
+            output_path=target,
+            template_family=template_state["cover_template_key"],
+            main_title=str(payload.get("cover_title") or payload.get("title") or ""),
+            sub_title=str((payload.get("variants") or [{}])[0].get("angle") or cover_template.get("sub_title_hint") or ""),
+            selling_points=_extract_sentences(str((payload.get("variants") or [{}])[0].get("body") or ""), 3),
+            cta_text=str(cover_template.get("cta_text") or "点击咨询领取专属方案"),
+        )
+        cover_images = [str(cover_image)]
+    else:
+        images = generate_slide_images(
+            run_dir=run_dir,
+            payload=payload,
+            topic_data=None,
+            config=config,
+            dry_run=dry_run,
+            skip_image=skip_image,
+        )
+        cover_images = [str(path) for path in images]
     state.setdefault("drafts", {})["cover_images"] = cover_images
     state["current_state"] = COVER_STATE
     return cover_images
@@ -500,20 +719,46 @@ def generate_graphic_draft(
     config = config or {}
     templates = load_image_prompt_templates(client_slug)
     template_state = _ensure_template_state(state, templates)
+    reference_materials = _active_reference_materials(state, GRAPHIC_STATE)
     if rotate_template:
         graphic_keys = list((templates.get("graphics_templates") or {}).keys())
         template_state["graphics_template_key"] = _cycle_template_key(
             template_state["graphics_template_key"],
             graphic_keys,
         )
+    reference_paths = list((reference_materials or {}).get("local_image_paths") or [])
     prompt_specs = _build_graphic_prompts(payload, state, client_slug)[:count]
-    for filename, prompt in prompt_specs:
-        target = graphic_dir / filename
-        if dry_run:
-            _write_placeholder_png(target)
-        else:
-            generate_image(prompt, target, config=config, allow_placeholder=True)
-        generated.append(str(target))
+    if reference_materials:
+        reference_note = _reference_style_note(reference_materials)
+        prompt_specs = [(filename, f"{prompt} {reference_note}".strip()) for filename, prompt in prompt_specs]
+
+    if reference_paths:
+        graphics_templates = templates.get("graphics_templates") or {}
+        graphics_template = graphics_templates.get(template_state["graphics_template_key"]) or {}
+        variants = payload.get("variants") or []
+        for index, (filename, _prompt) in enumerate(prompt_specs):
+            target = graphic_dir / filename
+            base_image_path = reference_paths[min(index, len(reference_paths) - 1)]
+            variant = variants[index] if index < len(variants) else {}
+            rendered = render_base_image_overlay(
+                base_image_path=base_image_path,
+                output_path=target,
+                template_family=template_state["graphics_template_key"],
+                main_title=str(variant.get("title") or payload.get("cover_title") or ""),
+                sub_title=str(variant.get("angle") or payload.get("cover_title") or ""),
+                selling_points=_extract_sentences(str(variant.get("body") or ""), 4),
+                trust_points=_extract_sentences(str(variant.get("body") or ""), 4),
+                cta_text=str(graphics_template.get("cta_text") or "点击咨询专属提升方案"),
+            )
+            generated.append(str(rendered))
+    else:
+        for filename, prompt in prompt_specs:
+            target = graphic_dir / filename
+            if dry_run:
+                _write_placeholder_png(target)
+            else:
+                generate_image(prompt, target, config=config, allow_placeholder=True)
+            generated.append(str(target))
     state.setdefault("drafts", {})["graphic_images"] = generated
     state["current_state"] = GRAPHIC_STATE
     return generated
@@ -655,6 +900,9 @@ def route_message(
     ):
         config = {} if dry_run else common.load_config(config_path)
         run_dir = ensure_session_dir(client_slug, open_id, state)
+        reference_materials = _build_reference_materials(message, run_dir, COVER_STATE)
+        if reference_materials:
+            state["reference_materials"] = reference_materials
         cover_images = generate_cover_draft(
             run_dir=run_dir,
             payload=state["drafts"]["copywriting"],
@@ -672,6 +920,9 @@ def route_message(
     ):
         config = {} if dry_run else common.load_config(config_path)
         run_dir = ensure_session_dir(client_slug, open_id, state)
+        reference_materials = _build_reference_materials(message, run_dir, GRAPHIC_STATE)
+        if reference_materials:
+            state["reference_materials"] = reference_materials
         graphic_images = generate_graphic_draft(
             payload=state["drafts"]["copywriting"],
             state=state,

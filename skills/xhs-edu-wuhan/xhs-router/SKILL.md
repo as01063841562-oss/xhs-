@@ -19,8 +19,12 @@ description: Use when handling the Wuhan tutoring Xiaohongshu private-DM workflo
 4. 配图请求或局部配图修改 -> `xhs-image-graphic`
 5. 回退、汇总、重来当前阶段、局部修改解析 -> `xhs-feedback`
 
+补充规则：
+- 如果客户消息里带参考图片、本地图片路径、图片 URL，或“按这个/照这个/参考链接”之类表述，优先进入严格参考生图模式
+- 严格参考模式会把参考素材写入 `state.reference_materials`
+- 同一阶段后续再次生成时，默认复用最近一次参考素材
+
 硬规则：
 - 未明确确认，不得推进到下一阶段
 - 已确认内容默认锁定
 - “汇总”是旁路指令，不改变状态
-

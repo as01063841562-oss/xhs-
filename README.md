@@ -242,6 +242,23 @@ browser_image:
 
 武汉客户的封面和内容配图提示词由 [clients/wuhan-tutoring/config/image_prompt_templates.yaml](/Users/lmsx/.config/superpowers/worktrees/edu-media-openclaw/codex-wuhan-xhs-workflow/clients/wuhan-tutoring/config/image_prompt_templates.yaml) 驱动，路由脚本会在 `state.image_templates.cover_template_key` 和 `state.image_templates.graphics_template_key` 里记录当前模板。要换封面或图文风格，优先改这个 YAML，比直接改脚本更稳。
 
+### 5.1.1 飞书参考素材生图模式
+
+客户如果在飞书里直接发参考图片、图片 URL 或带预览图的参考链接，现在可以走“严格参考模式”。
+
+推荐消息格式：
+
+- `按这个参考图生成封面图 /绝对路径/reference-cover.png`
+- `按这个参考图生成配图 https://example.com/reference-graphic.jpg`
+- `照这个链接的颜色和排版生成配图 https://example.com/post`
+
+当前行为：
+
+- 路由层会把参考素材保存到 `state.reference_materials`
+- 如果能解析出本地图片或下载到参考图，封面/配图优先走本地严格参考叠版
+- 如果只有链接没有成功解析出参考图，系统会把链接和需求补进 prompt，走 best-effort 参考生成
+- 同一阶段再次刷新时，会优先复用最近一次参考素材
+
 ### 5.2 武汉客户网页入口（第一期 MVP）
 
 第一期网页入口采用 `FastAPI + Jinja2 + HTMX`，直接复用当前脚本和文件态状态机。

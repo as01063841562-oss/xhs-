@@ -69,6 +69,7 @@ cd "/Users/lmsx/.config/superpowers/worktrees/edu-media-openclaw/codex-wuhan-xhs
 - 匹配到预设选题时，使用 HTML 模板渲染 3 张高质量图片（封面+内容+CTA）
 - 未匹配到时，回退到 AI 生成封面图（单图模式）
 - 审核卡片展示多张图片预览
+- 客户如果补发参考图片、图片 URL 或参考链接，可进入严格参考生图模式，优先按参考素材的颜色和排版生成
 
 **参数说明：**
 - `--topic`：填入从用户消息中提取的主题（必须）
