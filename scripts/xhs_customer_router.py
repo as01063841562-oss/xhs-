@@ -23,7 +23,6 @@ from xhs_feedback_parser import parse_feedback
 from xhs_customer_state import ensure_session_dir, load_state, save_state
 from xhs_feishu_flow import generate_slide_images, generate_xhs_payload
 from gemini_image import generate_image
-from xhs_image_layouts import render_base_image_overlay
 from xhs_topic_generator import (
     get_all_subjects,
     get_random_topics,
@@ -347,7 +346,10 @@ def _reference_style_note(materials: dict[str, Any] | None) -> str:
     layout_hint = style_profile.get("layout_hint") or ""
     links = materials.get("links") or []
     instruction = str(materials.get("instruction") or "").strip()
-    notes = ["严格参考参考素材的颜色、版式和信息密度，不要自行改成别的视觉语言。"]
+    notes = [
+        "严格参考参考素材的颜色、版式和信息密度，不要自行改成别的视觉语言。",
+        "参考样图只用于风格迁移和提示词约束，不要直接修改、叠字或复刻原图中的具体人物与画面。",
+    ]
     if top_colors:
         notes.append(f"主色参考：{top_colors[:4]}。")
     if layout_hint:
@@ -667,23 +669,16 @@ def generate_cover_draft(
         )
     payload = deepcopy(payload)
     payload["cover_prompt"] = _build_cover_prompt(payload, state, client_slug)
-    reference_paths = list((reference_materials or {}).get("local_image_paths") or [])
     if reference_materials:
         payload["cover_prompt"] = f"{payload['cover_prompt']} {_reference_style_note(reference_materials)}".strip()
-    if reference_paths:
-        cover_templates = templates.get("cover_templates") or {}
-        cover_template = cover_templates.get(template_state["cover_template_key"]) or {}
+    if reference_materials:
         target = run_dir / "cover.png"
-        cover_image = render_base_image_overlay(
-            base_image_path=reference_paths[0],
-            output_path=target,
-            template_family=template_state["cover_template_key"],
-            main_title=str(payload.get("cover_title") or payload.get("title") or ""),
-            sub_title=str((payload.get("variants") or [{}])[0].get("angle") or cover_template.get("sub_title_hint") or ""),
-            selling_points=_extract_sentences(str((payload.get("variants") or [{}])[0].get("body") or ""), 3),
-            cta_text=str(cover_template.get("cta_text") or "点击咨询领取专属方案"),
-        )
-        cover_images = [str(cover_image)]
+        if dry_run:
+            _write_placeholder_png(target)
+            cover_images = [str(target)]
+        else:
+            cover_image = generate_image(payload["cover_prompt"], target, config=config, allow_placeholder=True)
+            cover_images = [str(cover_image)]
     else:
         images = generate_slide_images(
             run_dir=run_dir,
@@ -726,31 +721,19 @@ def generate_graphic_draft(
             template_state["graphics_template_key"],
             graphic_keys,
         )
-    reference_paths = list((reference_materials or {}).get("local_image_paths") or [])
     prompt_specs = _build_graphic_prompts(payload, state, client_slug)[:count]
     if reference_materials:
         reference_note = _reference_style_note(reference_materials)
         prompt_specs = [(filename, f"{prompt} {reference_note}".strip()) for filename, prompt in prompt_specs]
 
-    if reference_paths:
-        graphics_templates = templates.get("graphics_templates") or {}
-        graphics_template = graphics_templates.get(template_state["graphics_template_key"]) or {}
-        variants = payload.get("variants") or []
-        for index, (filename, _prompt) in enumerate(prompt_specs):
+    if reference_materials:
+        for filename, prompt in prompt_specs:
             target = graphic_dir / filename
-            base_image_path = reference_paths[min(index, len(reference_paths) - 1)]
-            variant = variants[index] if index < len(variants) else {}
-            rendered = render_base_image_overlay(
-                base_image_path=base_image_path,
-                output_path=target,
-                template_family=template_state["graphics_template_key"],
-                main_title=str(variant.get("title") or payload.get("cover_title") or ""),
-                sub_title=str(variant.get("angle") or payload.get("cover_title") or ""),
-                selling_points=_extract_sentences(str(variant.get("body") or ""), 4),
-                trust_points=_extract_sentences(str(variant.get("body") or ""), 4),
-                cta_text=str(graphics_template.get("cta_text") or "点击咨询专属提升方案"),
-            )
-            generated.append(str(rendered))
+            if dry_run:
+                _write_placeholder_png(target)
+            else:
+                generate_image(prompt, target, config=config, allow_placeholder=True)
+            generated.append(str(target))
     else:
         for filename, prompt in prompt_specs:
             target = graphic_dir / filename

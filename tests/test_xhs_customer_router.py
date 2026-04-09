@@ -281,14 +281,18 @@ class XhsCustomerRouterTest(unittest.TestCase):
                 ],
             }
 
-            with patch("xhs_customer_router.render_base_image_overlay", side_effect=lambda **kwargs: Path(kwargs["output_path"])) as mock_overlay, patch(
-                "xhs_customer_router.generate_image"
-            ) as mock_generate:
+            def fake_generate(prompt, output_path, config=None, allow_placeholder=True):
+                del config, allow_placeholder
+                Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+                Path(output_path).write_bytes(b"png")
+                self.assertIn("严格参考参考素材的颜色、版式和信息密度", prompt)
+                return Path(output_path)
+
+            with patch("xhs_customer_router.generate_image", side_effect=fake_generate) as mock_generate:
                 generated = generate_graphic_draft(payload, state, run_dir, dry_run=False)
 
         self.assertEqual(len(generated), 2)
-        self.assertEqual(mock_overlay.call_count, 2)
-        mock_generate.assert_not_called()
+        self.assertEqual(mock_generate.call_count, 2)
 
     def test_generate_cover_draft_cycles_cover_template_when_refreshing(self) -> None:
         state = {
@@ -329,9 +333,17 @@ class XhsCustomerRouterTest(unittest.TestCase):
             }
             payload = {"cover_title": "标题", "variants": [{"angle": "副标题", "body": "第一点。第二点。第三点。"}], "cover_prompt": "old"}
 
-            with patch("xhs_customer_router.render_base_image_overlay", side_effect=lambda **kwargs: Path(kwargs["output_path"])) as mock_overlay, patch(
-                "xhs_customer_router.generate_slide_images"
-            ) as mock_generate_slide_images:
+            def fake_generate(prompt, output_path, config=None, allow_placeholder=True):
+                del config, allow_placeholder
+                Path(output_path).parent.mkdir(parents=True, exist_ok=True)
+                Path(output_path).write_bytes(b"png")
+                self.assertIn("严格参考参考素材的颜色、版式和信息密度", prompt)
+                return Path(output_path)
+
+            with patch("xhs_customer_router.generate_slide_images"
+            ) as mock_generate_slide_images, patch(
+                "xhs_customer_router.generate_image", side_effect=fake_generate
+            ) as mock_generate:
                 generated = generate_cover_draft(
                     run_dir=run_dir,
                     payload=payload,
@@ -341,8 +353,8 @@ class XhsCustomerRouterTest(unittest.TestCase):
                 )
 
         self.assertEqual(len(generated), 1)
-        self.assertEqual(mock_overlay.call_count, 1)
         mock_generate_slide_images.assert_not_called()
+        self.assertEqual(mock_generate.call_count, 1)
 
     def test_route_message_returns_summary_without_mutating_state(self) -> None:
         state = {
