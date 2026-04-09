@@ -286,6 +286,8 @@ class XhsCustomerRouterTest(unittest.TestCase):
                 Path(output_path).parent.mkdir(parents=True, exist_ok=True)
                 Path(output_path).write_bytes(b"png")
                 self.assertIn("严格参考参考素材的颜色、版式和信息密度", prompt)
+                self.assertIn("减少文字堆叠", prompt)
+                self.assertIn("校区环境实拍图作为主体", prompt)
                 return Path(output_path)
 
             with patch("xhs_customer_router.generate_image", side_effect=fake_generate) as mock_generate:
@@ -338,6 +340,8 @@ class XhsCustomerRouterTest(unittest.TestCase):
                 Path(output_path).parent.mkdir(parents=True, exist_ok=True)
                 Path(output_path).write_bytes(b"png")
                 self.assertIn("严格参考参考素材的颜色、版式和信息密度", prompt)
+                self.assertIn("减少文字堆叠", prompt)
+                self.assertIn("校区环境实拍图作为主体", prompt)
                 return Path(output_path)
 
             with patch("xhs_customer_router.generate_slide_images"

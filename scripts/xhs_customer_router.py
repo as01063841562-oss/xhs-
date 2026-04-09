@@ -349,9 +349,15 @@ def _reference_style_note(materials: dict[str, Any] | None) -> str:
     notes = [
         "严格参考参考素材的颜色、版式和信息密度，不要自行改成别的视觉语言。",
         "参考样图只用于风格迁移和提示词约束，不要直接修改、叠字或复刻原图中的具体人物与画面。",
+        "优先使用校区环境实拍图作为主体，不要生成陌生校园、虚构教室或无关人物场景。",
+        "减少文字堆叠，不要把字铺满整张图；每张图只保留一个主标题和3到4个短标签/短卖点。",
+        "标题区、图片区、CTA区要明确分层，留足边距和留白，整体更像整洁的招生海报，不要杂乱拼贴。",
     ]
     if top_colors:
         notes.append(f"主色参考：{top_colors[:4]}。")
+        mint_like = sum(1 for color in top_colors[:4] if len(color) >= 3 and color[1] >= 180 and color[2] >= 180)
+        if mint_like >= 2:
+            notes.append("色彩倾向接近浅薄荷绿/青绿色底色，可搭配黑白高对比标题框，整体清爽而不是厚重。")
     if layout_hint:
         notes.append(f"排版倾向：{layout_hint}。")
     if instruction:
