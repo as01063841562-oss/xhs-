@@ -70,6 +70,119 @@ def load_json_file(path: Path) -> dict[str, Any]:
         return json.load(handle) or {}
 
 
+def _strip_json5_comments(text: str) -> str:
+    result: list[str] = []
+    in_string = False
+    quote = ""
+    escape = False
+    index = 0
+    length = len(text)
+
+    while index < length:
+        char = text[index]
+        nxt = text[index + 1] if index + 1 < length else ""
+
+        if in_string:
+            result.append(char)
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == quote:
+                in_string = False
+                quote = ""
+            index += 1
+            continue
+
+        if char in {'"', "'"}:
+            in_string = True
+            quote = char
+            result.append(char)
+            index += 1
+            continue
+
+        if char == "/" and nxt == "/":
+            index += 2
+            while index < length and text[index] not in "\r\n":
+                index += 1
+            continue
+
+        if char == "/" and nxt == "*":
+            index += 2
+            while index + 1 < length and not (text[index] == "*" and text[index + 1] == "/"):
+                index += 1
+            index += 2
+            continue
+
+        result.append(char)
+        index += 1
+
+    return "".join(result)
+
+
+def _quote_json5_keys(text: str) -> str:
+    pattern = re.compile(r'(^|[{,]\s*)([A-Za-z_$][A-Za-z0-9_$-]*)\s*:', re.MULTILINE)
+    return pattern.sub(lambda match: f'{match.group(1)}"{match.group(2)}":', text)
+
+
+def _remove_json5_trailing_commas(text: str) -> str:
+    return re.sub(r",(\s*[}\]])", r"\1", text)
+
+
+def _load_json5_like_file(path: Path) -> dict[str, Any]:
+    if not path.exists():
+        return {}
+    text = path.read_text(encoding="utf-8")
+    cleaned = _remove_json5_trailing_commas(_quote_json5_keys(_strip_json5_comments(text)))
+    return json.loads(cleaned or "{}") or {}
+
+
+def _load_env_file(path: Path) -> dict[str, str]:
+    if not path.exists():
+        return {}
+    data: dict[str, str] = {}
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key:
+            data[key] = value
+    return data
+
+
+def _resolve_secret_refs(value: Any, env_map: dict[str, str]) -> Any:
+    if isinstance(value, dict):
+        if value.get("source") == "env" and "id" in value:
+            env_key = str(value.get("id") or "").strip()
+            if not env_key:
+                return None
+            return env_map.get(env_key) or os.environ.get(env_key)
+        return {key: _resolve_secret_refs(item, env_map) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_resolve_secret_refs(item, env_map) for item in value]
+    return value
+
+
+def _load_openclaw_config_tree(path: Path, root_dir: Path, env_map: dict[str, str]) -> dict[str, Any]:
+    loaded = _load_json5_like_file(path)
+    if not isinstance(loaded, dict):
+        return {}
+
+    include_items = loaded.get("$include")
+    merged: dict[str, Any] = {}
+    if isinstance(include_items, list):
+        for include_item in include_items:
+            include_path = (root_dir / str(include_item)).resolve()
+            merged = deep_merge(merged, _load_openclaw_config_tree(include_path, root_dir, env_map))
+
+    remaining = {key: value for key, value in loaded.items() if key != "$include"}
+    merged = deep_merge(merged, remaining)
+    return _resolve_secret_refs(merged, env_map) or {}
+
+
 def deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
     result = dict(base)
     for key, value in override.items():
@@ -206,7 +319,9 @@ def load_openclaw_config(config_path: str | None = None) -> dict[str, Any]:
     path = resolve_path(config_path) if config_path else OPENCLAW_CONFIG_PATH
     if not path or not path.exists():
         return {}
-    return load_json_file(path)
+    root_dir = path.parent
+    env_map = _load_env_file(root_dir / ".env")
+    return _load_openclaw_config_tree(path, root_dir, env_map)
 
 
 def _pick_non_placeholder(mapping: dict[str, Any], keys: tuple[str, ...]) -> Any:
