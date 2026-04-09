@@ -136,6 +136,19 @@ def main() -> None:
             "--dry-run",
         ]
     )
+    wuhan_router_summary = run_json(
+        [
+            python_bin,
+            str(SCRIPT_DIR / "xhs_customer_router.py"),
+            "--client",
+            "wuhan-tutoring",
+            "--open-id",
+            "ou_smoke_test",
+            "--message",
+            "汇总",
+            "--dry-run",
+        ]
+    )
 
     for key in ("task_file", "outline_file"):
         assert_exists(prepare_result[key])
@@ -159,6 +172,10 @@ def main() -> None:
     for key in ("review_card",):
         if key not in xhs_flow_resume["steps"]:
             raise AssertionError(f"缺少字段: {key}")
+    if wuhan_router_summary.get("operation") != "summary":
+        raise AssertionError("Wuhan router smoke 未返回 summary 操作")
+    if "当前会话摘要" not in wuhan_router_summary.get("response", ""):
+        raise AssertionError("Wuhan router smoke 未返回状态摘要")
 
     summary = {
         "status": "passed",
@@ -172,6 +189,9 @@ def main() -> None:
             "draft": xhs_flow_draft,
             "edit": xhs_flow_edit,
             "resume": xhs_flow_resume,
+        },
+        "wuhan_router": {
+            "summary": wuhan_router_summary,
         },
     }
     print(json.dumps(summary, ensure_ascii=False, indent=2))

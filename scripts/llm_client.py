@@ -40,6 +40,15 @@ def extract_json_object(text: str) -> dict[str, Any]:
     raise LLMResponseError("模型返回中未找到可解析的 JSON 对象。")
 
 
+def decode_json_response(response: requests.Response) -> dict[str, Any]:
+    """Decode provider responses robustly even when headers lie about charset."""
+
+    try:
+        return json.loads(response.content.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return response.json()
+
+
 class ProjectLLM:
     def __init__(self, root_config: dict[str, Any]):
         self.root_config = root_config
@@ -179,7 +188,7 @@ class ProjectLLM:
             timeout=self.api_config.get("timeout", 120),
         )
         response.raise_for_status()
-        data = response.json()
+        data = decode_json_response(response)
         try:
             return data["choices"][0]["message"]["content"]
         except (KeyError, IndexError) as exc:

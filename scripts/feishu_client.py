@@ -146,7 +146,7 @@ class FeishuClient:
         note_id: str = "note1",
         template: str = "blue",
     ) -> str:
-        """📋 审核卡片 — 带 ✅通过 / ✏️修改 / ❌重写 按钮。
+        """📋 审核卡片 — 带 ✅通过 / 刷新封面图 / 刷新内容配图 按钮。
 
         image_key 可以是单个字符串或列表（多图模式）。
         按钮 value 使用结构化对象，方便 card.action.trigger 回流时解析。
@@ -194,21 +194,21 @@ class FeishuClient:
                         },
                         {
                             "tag": "button",
-                            "text": {"tag": "plain_text", "content": "✏️ 修改"},
+                            "text": {"tag": "plain_text", "content": "刷新封面图"},
                             "type": "default",
                             "value": {
                                 "action": "xhs_review",
-                                "decision": "modify",
+                                "decision": "refresh_cover",
                                 "note_id": note_id,
                             },
                         },
                         {
                             "tag": "button",
-                            "text": {"tag": "plain_text", "content": "❌ 重写"},
+                            "text": {"tag": "plain_text", "content": "刷新内容配图"},
                             "type": "default",
                             "value": {
                                 "action": "xhs_review",
-                                "decision": "rewrite",
+                                "decision": "refresh_graphics",
                                 "note_id": note_id,
                             },
                         },

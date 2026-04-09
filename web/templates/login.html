@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>进入武汉教培 Workflow</title>
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body>
+  <main class="login-shell">
+    <section class="panel narrow">
+      <div class="eyebrow">Magic Link Access</div>
+      <h1>进入武汉教培 Workflow</h1>
+      <p class="muted">请使用运营或客户专属访问链接进入。如果你看到这个页面，说明当前链接无效或会话已失效。</p>
+      {% if message %}
+      <div class="flash">{{ message }}</div>
+      {% endif %}
+    </section>
+  </main>
+</body>
+</html>

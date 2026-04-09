@@ -1,34 +1,43 @@
-# 微信公众号自动化 Skill - 主配置文件
-# 复制此文件为 config.yaml 并填入你的信息
+# 教育自媒体 AI 自动化 - 配置模板
+# 复制此文件为 config.yaml 并按你的环境填写。
 
+# ── 微信公众号 ─────────────────────────────────────────────
 wechat:
   app_id: "wx_your_app_id"
   app_secret: "your_app_secret"
 
-# 飞书 appId / appSecret 优先从 ~/.openclaw/openclaw.json 读取
-# 这里主要保留接收消息的路由；appId/appSecret 仅用于临时本地覆盖
-feishu:
-  receive_id: "ou_your_open_id"
-  receive_id_type: "open_id"
-  api_base: "https://open.feishu.cn/open-apis"
+# ── 文本生成后端 ───────────────────────────────────────────
+# 默认推荐 openai_compatible。
+# 如果本机 ~/.openclaw/openclaw.json 已配置可用模型，base_url / api_key / model
+# 可以留空，由项目在运行时自动继承。
+llm_api:
+  backend: "openai_compatible"
+  base_url: ""
+  api_key: ""
+  model: ""
+  timeout: 120
 
+# 可选：Gemini CLI 文本后端（只有你确认额度和落盘行为都稳定时再切换）
+llm_cli:
+  command: "/opt/homebrew/bin/gemini"
+  model: "gemini-2.5-flash"
+  timeout: 300
+
+# 旧版 node 脚本后端（保留兼容）
+llm_cli_legacy:
+  command: "/opt/homebrew/bin/node"
+  script_path: "/Users/lmsx/gemini-cli.js"
+  api_key: "placeholder"
+  sync_key_to_user_config: false
+
+# ── 图片生成 ───────────────────────────────────────────────
 image_api:
   base_url: "https://api.openai.com"
-  api_key: "sk-your-api-key"
+  api_key: "sk-your-image-api-key"
   model: "dall-e-3"
   proxy: ""
   timeout: 60
   backend: "gemini_web"
-
-browser_image:
-  launcher: "open"
-  chrome_app: "Google Chrome"
-  profile_dir: "./.runtime/chrome-user-profile"
-  source_profile_dir: "~/Library/Application Support/Google/Chrome"
-  remote_debug_port: 9227
-  gemini_url: "https://gemini.google.com/app"
-  launch_timeout: 90
-  page_timeout: 180
 
 gemini_image:
   backend: "gemini_web"
@@ -37,12 +46,33 @@ gemini_image:
   output_dir: "/tmp/gemini_images"
   timeout: 180
 
+# ── 运行态目录 ─────────────────────────────────────────────
+runtime:
+  root_dir: "~/.openclaw/runtime/edu-media-openclaw"
+  state_dir: "~/.openclaw/runtime/edu-media-openclaw/state"
+  session_dir: "~/.openclaw/runtime/edu-media-openclaw/sessions"
+  audit_dir: "~/.openclaw/runtime/edu-media-openclaw/audit"
+  browser_profile_dir: "~/.openclaw/runtime/edu-media-openclaw/chrome-user-profile"
+
+# Gemini 网页生图（本机 Chrome + 登录态 profile）
+browser_image:
+  launcher: "open"
+  chrome_app: "Google Chrome"
+  profile_dir: "~/.openclaw/runtime/edu-media-openclaw/chrome-user-profile"
+  source_profile_dir: "~/Library/Application Support/Google/Chrome"
+  remote_debug_port: 9227
+  gemini_url: "https://gemini.google.com/app"
+  launch_timeout: 90
+  page_timeout: 180
+
+# ── 默认风格 ───────────────────────────────────────────────
 defaults:
   writing_style: "tech_blogger"
-  image_style: "hand_drawn"
-  cover_style: "tech_blue"
+  image_style: "ai_play"
+  cover_style: "ai_play"
   layout_style: "blue_dot"
 
+# ── 文章参数 ───────────────────────────────────────────────
 article:
   author: "你的笔名"
   default_length: 6000
@@ -51,6 +81,21 @@ article:
   illustration_frequency: 700
   max_illustrations: 8
 
+# ── 小红书参数 ─────────────────────────────────────────────
+xhs:
+  cover_width: 1080
+  cover_height: 1440
+  default_audience: "教育行业运营负责人"
+  hashtag_count: 8
+
+# ── 飞书配置 ───────────────────────────────────────────────
+# 飞书 appId / appSecret 优先从 ~/.openclaw/openclaw.json 读取。
+feishu:
+  receive_id: "ou_your_open_id"
+  receive_id_type: "open_id"
+  api_base: "https://open.feishu.cn/open-apis"
+
+# ── 知识库 ─────────────────────────────────────────────────
 knowledge:
   mode: "manual"
   directory:

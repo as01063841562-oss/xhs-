@@ -185,12 +185,51 @@ def _wait_for_visible_button(page, names: list[str], timeout_ms: int):
     raise GeminiWebImageError(f"等待按钮超时: {names}, last_error={last_error}")
 
 
+def _result_generation_in_progress(page) -> bool:
+    try:
+        stop_button = page.get_by_role("button", name=re.compile(r"대답 생성 중지|Stop generating|停止生成", re.I))
+        if stop_button.count() > 0 and stop_button.first.is_visible():
+            return True
+    except Exception:
+        pass
+    try:
+        body_text = page.locator("body").inner_text()
+    except Exception:
+        return False
+    return bool(re.search(r"Creating your image|Synthesizing Visual Elements|생성 중", body_text, re.I))
+
+
+def _wait_for_image_result_ready(page, timeout_ms: int) -> None:
+    deadline = time.time() + timeout_ms / 1000
+    last_state = "unknown"
+    while time.time() < deadline:
+        if _result_generation_in_progress(page):
+            last_state = "generating"
+            page.wait_for_timeout(2_000)
+            continue
+        try:
+            _wait_for_visible_button(
+                page,
+                ["이미지 복사", "Copy image", "원본 크기 이미지 다운로드", "Download original size image"],
+                2_000,
+            )
+            return
+        except Exception:
+            last_state = "no-save-action"
+            page.wait_for_timeout(2_000)
+    raise GeminiWebImageError(f"等待 Gemini 图片结果超时: {last_state}")
+
+
 def _first_clickable(page, locators, timeout_ms: int):
     last_error: Exception | None = None
     for locator in locators:
         try:
             target = locator.first if hasattr(locator, "first") else locator
-            target.click(timeout=timeout_ms)
+            if target.count() == 0:
+                continue
+            if not target.is_visible():
+                continue
+            target.click(timeout=min(timeout_ms, 5_000), force=True)
             return target
         except Exception as exc:  # pragma: no cover - best effort
             last_error = exc
@@ -324,6 +363,111 @@ def _click_if_visible(page, locators, timeout_ms: int) -> bool:
     return False
 
 
+def _image_mode_active(page) -> bool:
+    """判断 Gemini 网页是否已经切到图片生成模式。"""
+    active_chip = page.get_by_role(
+        "button",
+        name=re.compile(r"이미지 만들기 선택 해제|Create image deselect", re.I),
+    )
+    try:
+        return active_chip.count() > 0 and active_chip.first.is_visible()
+    except Exception:
+        return False
+
+
+def _ensure_image_mode(page, timeout_ms: int) -> None:
+    """打开工具抽屉并切换到图片生成模式。"""
+    if _image_mode_active(page):
+        return
+
+    deadline = time.time() + timeout_ms / 1000
+    last_error: Exception | None = None
+    drawer_button = page.locator("button.toolbox-drawer-button-with-label").first
+    while time.time() < deadline:
+        try:
+            if _image_mode_active(page):
+                return
+
+            if drawer_button.get_attribute("aria-expanded") != "true":
+                drawer_button.click(timeout=timeout_ms, force=True)
+                page.wait_for_timeout(500)
+
+            mode_candidates = [
+                page.get_by_role("menuitemcheckbox", name=re.compile(r"이미지 만들기|Create image", re.I)),
+                page.get_by_role("button", name=re.compile(r"🖼️\s*이미지 만들기|이미지 만들기|Create image", re.I)),
+                page.get_by_text(re.compile(r"🖼️\s*이미지 만들기|이미지 만들기|Create image", re.I)),
+            ]
+            _first_clickable(page, mode_candidates, timeout_ms)
+            page.wait_for_timeout(1_000)
+            if _image_mode_active(page):
+                return
+        except Exception as exc:  # pragma: no cover - best effort
+            last_error = exc
+        page.wait_for_timeout(1_000)
+    raise GeminiWebImageError(f"无法切换到 Gemini 图片模式: {last_error}")
+
+
+def _wait_for_image_prompt_box(page, timeout_ms: int):
+    """等待图片模式的提示词输入框出现。"""
+    deadline = time.time() + timeout_ms / 1000
+    last_error: Exception | None = None
+    while time.time() < deadline:
+        try:
+            candidates = [
+                page.locator("textarea:visible"),
+                page.locator('[role="textbox"]:visible'),
+                page.locator('[contenteditable="true"]:visible'),
+            ]
+            for locator in candidates:
+                if locator.count() == 0 or not locator.first.is_visible():
+                    continue
+                prompt_box = locator.first
+                placeholder = (prompt_box.get_attribute("placeholder") or "").strip()
+                aria_label = (prompt_box.get_attribute("aria-label") or "").strip()
+                contenteditable = (prompt_box.get_attribute("contenteditable") or "").strip().lower()
+                if placeholder and not re.search(r"Gemini에게 물어보기", placeholder, re.I):
+                    return prompt_box
+                if re.search(r"(이미지|Describe|Prompt|설명)", placeholder, re.I):
+                    return prompt_box
+                if re.search(r"(이미지|Describe|Prompt|설명)", aria_label, re.I):
+                    return prompt_box
+                if contenteditable == "true":
+                    return prompt_box
+        except Exception as exc:  # pragma: no cover - best effort
+            last_error = exc
+        time.sleep(0.5)
+    raise GeminiWebImageError(f"找不到 Gemini 图片描述输入框: {last_error}")
+
+
+def _ensure_image_style(page, timeout_ms: int, style_name: str = "") -> None:
+    """保留 Gemini 默认风格，不再自动点击任何风格预设。"""
+    del page, timeout_ms, style_name
+    return
+
+
+def _attach_reference_images(page, image_paths: list[str], timeout_ms: int) -> None:
+    paths = [str(Path(path).expanduser()) for path in list(image_paths or []) if str(path).strip()]
+    if not paths:
+        return
+
+    upload_menu_button = page.get_by_role(
+        "button",
+        name=re.compile(r"파일 업로드 메뉴 열기|Open file upload menu|打开文件上传菜单|文件上传菜单", re.I),
+    ).first
+    upload_menu_item = page.get_by_role(
+        "menuitem",
+        name=re.compile(r"파일 업로드|Upload file|Upload files|文件上传", re.I),
+    ).first
+
+    upload_menu_button.click(timeout=min(timeout_ms, 10_000), force=True)
+    page.wait_for_timeout(500)
+    with page.expect_file_chooser(timeout=min(timeout_ms, 10_000)) as chooser_info:
+        upload_menu_item.click(timeout=min(timeout_ms, 10_000), force=True)
+    chooser = chooser_info.value
+    chooser.set_files(paths)
+    page.wait_for_timeout(1_500)
+
+
 def _send_prompt(page, prompt_box, timeout_ms: int = 15_000) -> bool:
     """把提示词发送给 Gemini。
 
@@ -373,6 +517,7 @@ def render_gemini_web_image(
     output_path: str | Path,
     size: tuple[int, int],
     settings: dict[str, Any] | None = None,
+    reference_image_paths: list[str] | None = None,
 ) -> Path:
     """通过 Gemini 网页生成图片并保存到指定路径。"""
     cfg = _settings(settings)
@@ -398,42 +543,34 @@ def render_gemini_web_image(
         browser = p.chromium.connect_over_cdp(f"http://127.0.0.1:{port}")
         page = _get_browser_page(browser, gemini_url)
 
-        mode_clicked = _click_if_visible(
-            page,
-            [
-                page.get_by_role("button", name="🖼️ 이미지 만들기"),
-                page.get_by_role("button", name=re.compile(r"이미지 만들기|制作图片|创建图片|Create image", re.I)),
-                page.get_by_text(re.compile(r"이미지 만들기|制作图片|创建图片|Create image", re.I)),
-            ],
-            10_000,
-        )
-        if mode_clicked:
-            page.wait_for_timeout(2_000)
-
-        prompt_box = None
-        textbox_candidates = [
-            page.get_by_role("textbox", name=re.compile(r"Gemini.*(프롬프트|提示词).*输入|프롬프트 입력|提示词输入|Prompt", re.I)),
-            page.locator("textarea:visible").first,
-            page.locator('[contenteditable="true"]:visible').first,
-        ]
-        for locator in textbox_candidates:
-            try:
-                if locator.count() > 0 and locator.is_visible():
-                    prompt_box = locator
-                    break
-            except Exception:
-                continue
-        if prompt_box is None:
-            raise GeminiWebImageError("找不到 Gemini 提示词输入框")
+        _ensure_image_mode(page, page_timeout * 1000)
+        _ensure_image_style(page, page_timeout * 1000)
+        _attach_reference_images(page, list(reference_image_paths or []), page_timeout * 1000)
+        prompt_box = _wait_for_image_prompt_box(page, page_timeout * 1000)
 
         prompt_box.fill(prompt)
         page.wait_for_timeout(800)
         _send_prompt(page, prompt_box)
+        _wait_for_image_result_ready(page, page_timeout * 1000)
+
+        copy_button = _wait_for_visible_button(
+            page,
+            ["이미지 복사", "复制图片", "Copy image", "이미지 공유"],
+            10_000,
+        )
+        try:
+            copy_button.click(timeout=10_000, force=True)
+            time.sleep(1.5)
+            _save_clipboard_png(output_path)
+            _normalize_image(output_path, size)
+            return output_path
+        except Exception as exc:
+            print(f"  ⚠️  剪贴板保存失败，尝试原图下载: {exc}")
 
         download_button = _wait_for_visible_button(
             page,
             ["원본 크기 이미지 다운로드", "下载原始尺寸图片", "下载原图", "Download original size image", "원본 크기"],
-            page_timeout * 1000,
+            10_000,
         )
         try:
             with page.expect_download(timeout=20_000) as download_info:
@@ -443,21 +580,7 @@ def render_gemini_web_image(
             _normalize_image(output_path, size)
             return output_path
         except Exception as exc:
-            print(f"  ⚠️  原图下载失败，尝试剪贴板复制: {exc}")
-
-        copy_button = _wait_for_visible_button(
-            page,
-            ["이미지 복사", "复制图片", "Copy image", "이미지 공유"],
-            page_timeout * 1000,
-        )
-        try:
-            copy_button.click(timeout=10_000, force=True)
-            time.sleep(1.5)
-            _save_clipboard_png(output_path)
-            _normalize_image(output_path, size)
-            return output_path
-        except Exception as exc:
-            print(f"  ⚠️  剪贴板保存失败，尝试再次下载原图: {exc}")
+            print(f"  ⚠️  原图下载失败，尝试再次下载原图: {exc}")
 
         download_candidates = [
             page.get_by_role("button", name=re.compile(r"원본 크기 이미지 다운로드|다운로드|下载原始尺寸图片|下载原图|Download original size image|원본 크기", re.I)),

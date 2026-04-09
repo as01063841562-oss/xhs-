@@ -36,6 +36,7 @@ def generate_image(
     output_path: str | Path | None = None,
     config: dict[str, Any] | None = None,
     allow_placeholder: bool = True,
+    reference_image_paths: list[str] | None = None,
 ) -> Path:
     """使用 Gemini CLI 生成图片。
 
@@ -81,7 +82,13 @@ def generate_image(
             _generate_placeholder(output_path, prompt)
             return output_path
         try:
-            render_gemini_web_image(prompt, output_path, size, settings=browser_settings)
+            render_gemini_web_image(
+                prompt,
+                output_path,
+                size,
+                settings=browser_settings,
+                reference_image_paths=list(reference_image_paths or []),
+            )
             print(f"  ✅ 图片已生成: {output_path}")
             return output_path
         except Exception as exc:

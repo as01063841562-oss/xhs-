@@ -1,0 +1,39 @@
+client:
+  slug: "wuhan-tutoring"
+  display_name: "武汉教育补习班"
+  platform: "xiaohongshu"
+  channel: "feishu_dm"
+
+materials:
+  min_articles: 3
+  min_images: 3
+  sample_requirements:
+    article_samples: 3
+    image_samples: 3
+  ready_when:
+    - "references/article/ has at least 3 parseable article samples"
+    - "references/images/ has at least 3 usable image samples"
+    - "references/文案风格指南.md"
+    - "references/图片风格模板.md"
+  source_profiles:
+    - "https://www.xiaohongshu.com/user/profile/684676fd000000001e03fa34?xsec_token=YB5b6JsJaklXj_rHdL_hFvcc04sB6FGGUA7NQFjEcee-g=&xsec_source=app_share&xhsshare=WeixinSession&appuid=63759286000000001f0148cc&apptime=1775469291&share_id=6a017e3a07dc4c05b783a187e8aeb706&wechatWid=4fd99ddfaf3cbf618288d14791787caf&wechatOrigin=menu"
+    - "https://www.xiaohongshu.com/user/profile/6901fc020000000037003fed?xsec_token=YBY9Fep2P0pMcp9aC1hSSi0ja53eM5eu7tIh1NnjwinhU=&xsec_source=app_share&xhsshare=WeixinSession&appuid=63759286000000001f0148cc&apptime=1775469306&share_id=7ca5dac0db184c169c9c9b678b3f7a0e&wechatWid=4fd99ddfaf3cbf618288d14791787caf&wechatOrigin=menu"
+    - "https://www.xiaohongshu.com/user/profile/6865ebf8000000001e004b42?xsec_token=YBrbXt3crDZQ2JOKleFWq4frB7O766A5r7QaQ08nq7z8Y=&xsec_source=app_share&xhsshare=WeixinSession&appuid=63759286000000001f0148cc&apptime=1775469313&share_id=4ef803455ad64af1a40d1903dfa99925&wechatWid=4fd99ddfaf3cbf618288d14791787caf&wechatOrigin=menu"
+
+workflow:
+  initial_state: "state_0_topic"
+  allow_summary_anytime: true
+  require_explicit_confirmation: true
+  lock_confirmed_sections: true
+
+copywriting:
+  min_length: 800
+  max_length: 1200
+  default_tags_min: 5
+  default_tags_max: 8
+  publish_reminder: false
+
+defaults:
+  revision_limit: null
+  graphic_style_bias: "professional"
+  cover_style_bias: "poster"

@@ -5,7 +5,7 @@
   1. 生成小红书素材包（文案 + 标签 + 封面 prompt）
   2. 生成封面图（Gemini 网页自动化或占位图）
   3. 上传图片到飞书
-  4. 发送审核卡片到飞书（✅通过 / ✏️修改 / ❌重写）
+  4. 发送审核卡片到飞书（✅通过 / 刷新封面图 / 刷新内容配图）
   5. 等待飞书 card.action.trigger 回流
   6. 通过 → 发送最终稿卡片；修改/重写 → 先打开修改说明卡，填写后再重新生成审核卡
 
@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import sys
 from copy import deepcopy
 from pathlib import Path
@@ -30,8 +31,16 @@ if str(SCRIPT_DIR) not in sys.path:
 from common import OUTPUT_DIR, ensure_dir, load_config, make_run_dir, save_json_file, save_text_file, timestamp
 from feishu_client import FeishuClient
 from gemini_image import generate_image, _generate_placeholder, GeminiImageError
+from xhs_image_prompts import build_cover_prompt, build_graphic_prompts, extract_sentences, ensure_template_state, load_image_prompt_templates
+from xhs_image_layouts import render_base_image_overlay
 from xhs_topic_generator import get_topic_by_title, get_topics_by_subject, WUHAN_TOPICS
-from xhs_image_renderer import render_topic_images, render_image
+from xhs_image_renderer import render_image
+
+DEFAULT_REVIEW_CLIENT_SLUG = "wuhan-tutoring"
+DEFAULT_REVIEW_IMAGE_TEMPLATES = {
+    "cover_template_key": "parent_consult",
+    "graphics_template_key": "study_plan",
+}
 
 
 # ── 小红书素材包生成（复用 xhs_generate 的 stub 逻辑） ──────
@@ -45,59 +54,71 @@ def generate_xhs_payload(
     revision_notes: str | None = None,
     revision_scope: str | None = None,
     existing_payload: dict[str, Any] | None = None,
+    system_prompt_text: str | None = None,
+    style_guide_text: str | None = None,
 ) -> dict[str, Any]:
     """生成小红书素材包。
 
     dry_run 时使用 stub 数据；revision_mode 用于修改/重写回路。
+    真实模式下如果文本后端失败，应直接报错，不能静默回退成演示 stub。
     """
     if not dry_run:
-        try:
-            from llm_client import OpenAICompatibleLLM, LLMConfigError
-            client = OpenAICompatibleLLM(config)
-            client.require_ready()
-            system = (
-                "你是一名擅长教育行业内容增长的小红书策划。"
-                "请输出严格 JSON，字段必须包含：positioning, cover_title, cover_prompt, hashtags, publish_checklist, variants。"
-                "variants 必须有 3 条，每条包含 title, body, angle。"
+        from llm_client import OpenAICompatibleLLM
+
+        client = OpenAICompatibleLLM(config)
+        client.require_ready()
+        system_sections = [
+            "你是一名擅长教育行业内容增长的小红书策划。"
+            "请输出严格 JSON，字段必须包含：positioning, cover_title, cover_prompt, hashtags, publish_checklist, variants。"
+            "variants 必须有 3 条，每条包含 title, body, angle。"
+        ]
+        if system_prompt_text:
+            system_sections.append(
+                "客户专用系统提示词如下，请优先遵守：\n"
+                f"{system_prompt_text}"
             )
-            revision_hint = ""
-            if revision_mode == "modify":
-                revision_hint = (
-                    "当前处于修改版，请在保留主题和核心观点的前提下，"
-                    "增强开头钩子，压缩冗余表达，并让标题更像可直接发布的小红书笔记。"
-                )
-            elif revision_mode == "rewrite":
-                revision_hint = (
-                    "当前处于重写版，请完全更换切入角度、标题和表达节奏，"
-                    "但仍围绕同一主题输出可直接人工复审的素材包。"
-                )
-            if revision_scope:
-                revision_hint += f"修改范围：{revision_scope}。\n"
-            if revision_notes:
-                revision_hint += (
-                    "用户的修改说明如下，请严格遵守并尽量保留原意：\n"
-                    f"{revision_notes}\n"
-                )
-            existing_hint = ""
-            if existing_payload:
-                existing_hint = (
-                    "现有初稿如下，仅供参考，不要逐字照搬：\n"
-                    f"{json.dumps(existing_payload, ensure_ascii=False, indent=2)}\n"
-                )
-            user = (
-                f"主题：{topic}\n"
-                f"目标读者：{audience}\n"
-                f"{revision_hint}\n"
-                f"{existing_hint}"
-                "要求：\n"
-                "1. 文案适合人工复审后直接发布。\n"
-                "2. 标签控制在 8-12 个。\n"
-                "3. 封面标题不超过 16 个字。\n"
-                "4. 不能承诺自动发帖或绕过平台风控。\n"
+        if style_guide_text:
+            system_sections.append(
+                "客户专用文案风格指南如下，请作为固定写作约束：\n"
+                f"{style_guide_text}"
             )
-            return client.chat_json(system, user, temperature=0.7)
-        except Exception as e:
-            print(f"  ⚠️  LLM 调用失败 ({e})，回退到 stub 数据")
+        system = "\n\n".join(system_sections)
+        revision_hint = ""
+        if revision_mode == "modify":
+            revision_hint = (
+                "当前处于修改版，请在保留主题和核心观点的前提下，"
+                "增强开头钩子，压缩冗余表达，并让标题更像可直接发布的小红书笔记。"
+            )
+        elif revision_mode == "rewrite":
+            revision_hint = (
+                "当前处于重写版，请完全更换切入角度、标题和表达节奏，"
+                "但仍围绕同一主题输出可直接人工复审的素材包。"
+            )
+        if revision_scope:
+            revision_hint += f"修改范围：{revision_scope}。\n"
+        if revision_notes:
+            revision_hint += (
+                "用户的修改说明如下，请严格遵守并尽量保留原意：\n"
+                f"{revision_notes}\n"
+            )
+        existing_hint = ""
+        if existing_payload:
+            existing_hint = (
+                "现有初稿如下，仅供参考，不要逐字照搬：\n"
+                f"{json.dumps(existing_payload, ensure_ascii=False, indent=2)}\n"
+            )
+        user = (
+            f"主题：{topic}\n"
+            f"目标读者：{audience}\n"
+            f"{revision_hint}\n"
+            f"{existing_hint}"
+            "要求：\n"
+            "1. 文案适合人工复审后直接发布。\n"
+            "2. 标签控制在 8-12 个。\n"
+            "3. 封面标题不超过 16 个字。\n"
+            "4. 不能承诺自动发帖或绕过平台风控。\n"
+        )
+        return client.chat_json(system, user, temperature=0.7)
 
     # stub 数据
     payload = {
@@ -250,6 +271,272 @@ def revise_stub_payload(
     return payload
 
 
+def _review_image_template_state(image_templates: dict[str, Any] | None = None) -> dict[str, str]:
+    state = dict(DEFAULT_REVIEW_IMAGE_TEMPLATES)
+    if image_templates:
+        for key in ("cover_template_key", "graphics_template_key"):
+            value = image_templates.get(key)
+            if value:
+                state[key] = str(value)
+    return state
+
+
+def _build_review_prompt_state(image_templates: dict[str, Any] | None = None) -> dict[str, Any]:
+    return {"image_templates": _review_image_template_state(image_templates)}
+
+
+def _normalize_optional_path(path: str | Path | None) -> str | None:
+    if path in {None, ""}:
+        return None
+    return str(Path(path).expanduser())
+
+
+def _normalize_optional_paths(paths: list[str] | tuple[str, ...] | None) -> list[str]:
+    normalized: list[str] = []
+    for path in list(paths or []):
+        resolved = _normalize_optional_path(path)
+        if resolved:
+            normalized.append(resolved)
+    return normalized
+
+
+def _current_template_family(image_templates: dict[str, Any] | None, key: str) -> str:
+    state = _review_image_template_state(image_templates)
+    return state[key]
+
+
+def _render_prompt_image(
+    prompt: str,
+    target_path: Path,
+    config: dict[str, Any],
+    dry_run: bool,
+    skip_image: bool,
+) -> Path:
+    target_path.parent.mkdir(parents=True, exist_ok=True)
+    if skip_image or dry_run:
+        _generate_placeholder(target_path, prompt)
+        return target_path
+    return generate_image(
+        prompt,
+        target_path,
+        config,
+        allow_placeholder=False,
+    )
+
+
+def _render_prompt_cover(
+    run_dir: Path,
+    payload: dict[str, Any],
+    config: dict[str, Any],
+    dry_run: bool,
+    skip_image: bool,
+    image_templates: dict[str, Any] | None = None,
+    refresh_index: int = 0,
+    current_cover_path: str | None = None,
+) -> Path:
+    prompt_state = _build_review_prompt_state(image_templates)
+    prompt = build_cover_prompt(payload, prompt_state, DEFAULT_REVIEW_CLIENT_SLUG)
+    fallback_path = run_dir / "slides" / "slide_1.png"
+    target_path = (
+        _versioned_artifact_path(current_cover_path, fallback_path, "refresh", refresh_index)
+        if refresh_index
+        else fallback_path
+    )
+    return _render_prompt_image(prompt, target_path, config, dry_run, skip_image)
+
+
+def _render_overlay_cover(
+    run_dir: Path,
+    payload: dict[str, Any],
+    image_templates: dict[str, Any] | None,
+    base_image_path: str,
+    refresh_index: int = 0,
+    current_cover_path: str | None = None,
+) -> Path:
+    fallback_path = run_dir / "slides" / "slide_1.png"
+    target_path = (
+        _versioned_artifact_path(current_cover_path, fallback_path, "refresh", refresh_index)
+        if refresh_index
+        else fallback_path
+    )
+    variants = payload.get("variants") or []
+    selling_points = extract_sentences(str((variants[0] or {}).get("body") or ""), 3) if variants else []
+    sub_title = str((variants[0] or {}).get("angle") or "") if variants else ""
+    templates = load_image_prompt_templates(DEFAULT_REVIEW_CLIENT_SLUG)
+    cover_templates = templates.get("cover_templates") or {}
+    family = _current_template_family(image_templates, "cover_template_key")
+    template = cover_templates.get(family) or {}
+    return render_base_image_overlay(
+        base_image_path=base_image_path,
+        output_path=target_path,
+        template_family=family,
+        main_title=str(payload.get("cover_title") or payload.get("title") or ""),
+        sub_title=sub_title or str(template.get("sub_title_hint") or ""),
+        selling_points=selling_points,
+        cta_text=str(template.get("cta_text") or "点击咨询领取专属方案"),
+    )
+
+
+def _render_prompt_graphics(
+    run_dir: Path,
+    payload: dict[str, Any],
+    config: dict[str, Any],
+    dry_run: bool,
+    skip_image: bool,
+    image_templates: dict[str, Any] | None = None,
+    refresh_index: int = 0,
+    current_graphic_paths: list[str] | None = None,
+) -> list[Path]:
+    prompt_state = _build_review_prompt_state(image_templates)
+    graphic_prompts = build_graphic_prompts(payload, prompt_state, DEFAULT_REVIEW_CLIENT_SLUG)[:2]
+    current_graphic_paths = list(current_graphic_paths or [])
+    rendered_paths: list[Path] = []
+    for index, (_, prompt) in enumerate(graphic_prompts, start=2):
+        fallback_path = run_dir / "slides" / f"slide_{index}.png"
+        current_path = current_graphic_paths[index - 2] if index - 2 < len(current_graphic_paths) else None
+        target_path = (
+            _versioned_artifact_path(current_path, fallback_path, "refresh", refresh_index)
+            if refresh_index
+            else fallback_path
+        )
+        rendered_paths.append(_render_prompt_image(prompt, target_path, config, dry_run, skip_image))
+    return rendered_paths
+
+
+def _render_overlay_graphics(
+    run_dir: Path,
+    payload: dict[str, Any],
+    image_templates: dict[str, Any] | None,
+    graphic_base_image_paths: list[str],
+    refresh_index: int = 0,
+    current_graphic_paths: list[str] | None = None,
+) -> list[Path]:
+    templates = load_image_prompt_templates(DEFAULT_REVIEW_CLIENT_SLUG)
+    family = _current_template_family(image_templates, "graphics_template_key")
+    graphics_templates = templates.get("graphics_templates") or {}
+    template = graphics_templates.get(family) or {}
+    variants = payload.get("variants") or []
+    current_graphic_paths = list(current_graphic_paths or [])
+    rendered_paths: list[Path] = []
+
+    for index, base_path in enumerate(graphic_base_image_paths[:2], start=2):
+        fallback_path = run_dir / "slides" / f"slide_{index}.png"
+        current_path = current_graphic_paths[index - 2] if index - 2 < len(current_graphic_paths) else None
+        target_path = (
+            _versioned_artifact_path(current_path, fallback_path, "refresh", refresh_index)
+            if refresh_index
+            else fallback_path
+        )
+        variant = variants[index - 2] if index - 2 < len(variants) else {}
+        rendered_paths.append(
+            render_base_image_overlay(
+                base_image_path=base_path,
+                output_path=target_path,
+                template_family=family,
+                main_title=str(variant.get("title") or payload.get("cover_title") or ""),
+                sub_title=str(variant.get("angle") or payload.get("cover_title") or ""),
+                selling_points=extract_sentences(str(variant.get("body") or ""), 4),
+                trust_points=extract_sentences(str(variant.get("body") or ""), 4),
+                cta_text=str(template.get("cta_text") or "点击咨询专属提升方案"),
+            )
+        )
+    return rendered_paths
+
+
+def _render_prompt_slide_set(
+    run_dir: Path,
+    payload: dict[str, Any],
+    config: dict[str, Any],
+    dry_run: bool,
+    skip_image: bool,
+    image_templates: dict[str, Any] | None = None,
+    marker: str = "rev",
+    version_index: int = 0,
+    current_slide_paths: list[str] | None = None,
+) -> list[Path]:
+    prompt_state = _build_review_prompt_state(image_templates)
+    cover_prompt = build_cover_prompt(payload, prompt_state, DEFAULT_REVIEW_CLIENT_SLUG)
+    graphic_prompts = build_graphic_prompts(payload, prompt_state, DEFAULT_REVIEW_CLIENT_SLUG)[:2]
+    current_slide_paths = list(current_slide_paths or [])
+
+    rendered_paths: list[Path] = []
+    prompts: list[str] = [cover_prompt, *(prompt for _, prompt in graphic_prompts)]
+    for index, prompt in enumerate(prompts, start=1):
+        fallback_path = run_dir / "slides" / f"slide_{index}.png"
+        current_path = current_slide_paths[index - 1] if index - 1 < len(current_slide_paths) else None
+        target_path = (
+            _versioned_artifact_path(current_path, fallback_path, marker, version_index)
+            if version_index
+            else fallback_path
+        )
+        rendered_paths.append(_render_prompt_image(prompt, target_path, config, dry_run, skip_image))
+    return rendered_paths
+
+
+def _render_mixed_slide_set(
+    run_dir: Path,
+    payload: dict[str, Any],
+    config: dict[str, Any],
+    dry_run: bool,
+    skip_image: bool,
+    image_templates: dict[str, Any] | None = None,
+    cover_base_image_path: str | None = None,
+    graphic_base_image_paths: list[str] | None = None,
+    marker: str = "rev",
+    version_index: int = 0,
+    current_slide_paths: list[str] | None = None,
+) -> list[Path]:
+    current_slide_paths = list(current_slide_paths or [])
+    cover_current = current_slide_paths[0] if current_slide_paths else None
+    graphic_current = current_slide_paths[1:] if len(current_slide_paths) > 1 else []
+
+    cover_path = (
+        _render_overlay_cover(
+            run_dir=run_dir,
+            payload=payload,
+            image_templates=image_templates,
+            base_image_path=cover_base_image_path,
+            refresh_index=version_index if marker != "init" else 0,
+            current_cover_path=cover_current,
+        )
+        if cover_base_image_path
+        else _render_prompt_cover(
+            run_dir=run_dir,
+            payload=payload,
+            config=config,
+            dry_run=dry_run,
+            skip_image=skip_image,
+            image_templates=image_templates,
+            refresh_index=version_index if marker != "init" else 0,
+            current_cover_path=cover_current,
+        )
+    )
+
+    overlay_graphics = _render_overlay_graphics(
+        run_dir=run_dir,
+        payload=payload,
+        image_templates=image_templates,
+        graphic_base_image_paths=_normalize_optional_paths(graphic_base_image_paths),
+        refresh_index=version_index if marker != "init" else 0,
+        current_graphic_paths=graphic_current,
+    )
+    graphics: list[Path] = list(overlay_graphics)
+    if len(graphics) < 2:
+        prompt_graphics = _render_prompt_graphics(
+            run_dir=run_dir,
+            payload=payload,
+            config=config,
+            dry_run=dry_run,
+            skip_image=skip_image,
+            image_templates=image_templates,
+            refresh_index=version_index if marker != "init" else 0,
+            current_graphic_paths=graphic_current,
+        )
+        graphics.extend(prompt_graphics[len(graphics):2])
+
+    return [cover_path, *graphics]
+
+
 def generate_slide_images(
     run_dir: Path,
     payload: dict[str, Any],
@@ -257,38 +544,47 @@ def generate_slide_images(
     config: dict[str, Any],
     dry_run: bool,
     skip_image: bool,
+    image_templates: dict[str, Any] | None = None,
+    cover_base_image_path: str | None = None,
+    graphic_base_image_paths: list[str] | None = None,
 ) -> list[Path]:
-    """生成多张幻灯片图片（使用 HTML 渲染引擎）。
+    """生成多张幻灯片图片。
 
-    如果匹配到预设选题（topic_data），使用 HTML 模板渲染；
-    否则回退到 AI 生图（单张封面）。
+    默认使用武汉教培客户的 prompt 模板，输出 1 张宣传封面图 + 2 张内容配图。
+    只有旧状态才允许回退到 HTML 视觉卡片路径；新 prompt 模板链路失败时直接报错，
+    避免把错图静默发出去。
     """
-    if topic_data:
-        # 使用 HTML 渲染引擎
-        print(f"  🧠 渲染引擎: HTML模板 (style={topic_data.get('style', 'info_card')})")
-        try:
-            images = render_topic_images(topic_data, run_dir / "slides", count=3)
-            print(f"  ✅ {len(images)} 张幻灯片已生成")
-            return images
-        except Exception as e:
-            print(f"  ⚠️  HTML 渲染失败 ({e})，回退到 AI 生图")
-
-    # 回退：传统 AI 生图（单张封面）
-    cover_path = run_dir / "cover.png"
-    backend = config.get("gemini_image", {}).get("backend", "gemini_cli") if config else "gemini_cli"
-    print(f"  🧠 封面后端: {backend}")
-    if skip_image or dry_run:
-        _generate_placeholder(cover_path, payload.get("cover_prompt", ""))
-        print(f"  ✅ 占位图已生成: {cover_path}")
-    else:
-        cover_path = generate_image(
-            payload["cover_prompt"],
-            cover_path,
-            config,
-            allow_placeholder=False,
+    del topic_data
+    try:
+        print("  🧠 渲染引擎: 客户 prompt 模板 (cover + graphics)")
+        images = _render_mixed_slide_set(
+            run_dir=run_dir,
+            payload=payload,
+            config=config,
+            dry_run=dry_run,
+            skip_image=skip_image,
+            image_templates=image_templates,
+            cover_base_image_path=_normalize_optional_path(cover_base_image_path),
+            graphic_base_image_paths=_normalize_optional_paths(graphic_base_image_paths),
+            marker="init",
+            version_index=0,
         )
-        print(f"  ✅ 封面图已生成: {cover_path}")
-    return [cover_path]
+        print(f"  ✅ {len(images)} 张幻灯片已生成")
+        return images
+    except Exception as e:
+        if image_templates:
+            print(f"  ❌ prompt 渲染失败: {e}")
+            raise
+        print(f"  ⚠️  prompt 渲染失败 ({e})，回退到 HTML 卡片模板")
+
+    style_hint = "info_card"
+    slide_topics = _build_payload_slide_topics(payload, style_hint)
+    images = [
+        render_image(topic, run_dir / "slides" / f"slide_{index}.png")
+        for index, topic in enumerate(slide_topics, start=1)
+    ]
+    print(f"  ✅ {len(images)} 张幻灯片已生成")
+    return images
 
 
 def upload_slide_images(
@@ -380,7 +676,12 @@ def request_revision_notes(
     config_path: str | None = None,
 ) -> dict[str, Any]:
     """将当前审核卡切换为“修改说明卡”，等待用户补充修改意见。"""
-    run_dir, state = load_review_state(message_id)
+    if action not in {"modify", "rewrite"}:
+        raise ValueError("request_revision_notes 仅支持 modify/rewrite")
+    try:
+        run_dir, state = load_review_state(message_id)
+    except FileNotFoundError as e:
+        return _blocked_missing_review_state(action, message_id, e)
     current_message_id = state.get("current_review_message_id")
     if current_message_id != message_id:
         print(
@@ -439,6 +740,368 @@ def _match_topic_data(topic: str) -> dict[str, Any] | None:
     return matched
 
 
+def _review_card_title(payload: dict[str, Any]) -> str:
+    return f"🎨 小红书笔记审核 — {payload['cover_title']}"
+
+
+def _review_card_tags(payload: dict[str, Any]) -> str:
+    return " ".join(f"#{t}" for t in payload["hashtags"][:6])
+
+
+def _persisted_review_style_hint(state: dict[str, Any]) -> str | None:
+    style = state.get("topic_data_style")
+    if style:
+        return str(style)
+    return None
+
+
+def _persisted_image_templates(state: dict[str, Any]) -> dict[str, str] | None:
+    templates = state.get("image_templates")
+    if isinstance(templates, dict) and any(templates.get(key) for key in ("cover_template_key", "graphics_template_key")):
+        return _review_image_template_state(templates)
+    return None
+
+
+def _normalized_slide_paths(run_dir: Path, state: dict[str, Any]) -> list[str]:
+    slide_paths = [str(path) for path in state.get("slide_paths") or [] if path]
+    if slide_paths:
+        return slide_paths
+    cover_path = state.get("cover_path")
+    if cover_path:
+        return [str(cover_path)]
+    return [str(run_dir / "cover.png")]
+
+
+def _normalized_image_keys(state: dict[str, Any]) -> list[str]:
+    image_keys = [str(key) for key in state.get("image_keys") or [] if key]
+    if image_keys:
+        return image_keys
+    image_key = state.get("image_key")
+    if image_key:
+        return [str(image_key)]
+    return []
+
+
+def _refreshed_artifact_path(
+    current_path: str | Path | None,
+    fallback_path: Path,
+    refresh_index: int,
+) -> Path:
+    base_path = Path(current_path) if current_path else fallback_path
+    suffix = base_path.suffix or ".png"
+    return base_path.with_name(f"{base_path.stem}_refresh_{refresh_index}{suffix}")
+
+
+def _versioned_artifact_path(
+    current_path: str | Path | None,
+    fallback_path: Path,
+    marker: str,
+    version_index: int,
+) -> Path:
+    base_path = Path(current_path) if current_path else fallback_path
+    suffix = base_path.suffix or ".png"
+    return base_path.with_name(f"{base_path.stem}_{marker}_{version_index}{suffix}")
+
+
+def _split_review_points(text: str | None, limit: int = 3) -> list[str]:
+    raw = str(text or "").replace("\n", "。")
+    parts = [part.strip(" 。！？!?；;") for part in re.split(r"[。！？!?；;]+", raw) if part.strip(" 。！？!?；;")]
+    return parts[:limit]
+
+
+def _variant_review_points(payload: dict[str, Any], variant: dict[str, Any], limit: int = 3) -> list[str]:
+    points = _split_review_points(str(variant.get("body") or ""), limit=limit)
+    if points:
+        return points
+    title = str(variant.get("title") or payload.get("cover_title") or "").strip()
+    if title:
+        return [title]
+    return ["内容待确认"]
+
+
+def _content_layout_style(style_hint: str | None) -> str:
+    if style_hint in {"data_table", "info_card", "comparison", "timeline"}:
+        return str(style_hint)
+    return "info_card"
+
+
+def _build_payload_cover_topic(payload: dict[str, Any], style_hint: str | None) -> dict[str, Any]:
+    variants = payload.get("variants") or []
+    lead_variant = variants[0] if variants else {}
+    return {
+        "title": payload.get("cover_title") or lead_variant.get("title") or "",
+        "subtitle": lead_variant.get("angle") or "",
+        "style": "promo_cover",
+        "original_style": _content_layout_style(style_hint),
+        "tags": list(payload.get("hashtags") or []),
+        "selling_points": _variant_review_points(payload, lead_variant, limit=3),
+    }
+
+
+def _build_payload_content_topic(
+    payload: dict[str, Any],
+    variant: dict[str, Any],
+    style_hint: str | None,
+    paired_variant: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    title = str(variant.get("title") or payload.get("cover_title") or "")
+    subtitle = str(variant.get("angle") or payload.get("cover_title") or "")
+    tags = list(payload.get("hashtags") or [])
+    points = _variant_review_points(payload, variant, limit=3)
+    style = _content_layout_style(style_hint)
+
+    if style == "data_table":
+        return {
+            "title": title,
+            "subtitle": subtitle,
+            "style": "data_table",
+            "tags": tags,
+            "data_content": {
+                "table_title": subtitle or title,
+                "headers": ["模块", "说明"],
+                "rows": [[f"要点{i + 1}", point] for i, point in enumerate(points)],
+            },
+        }
+
+    if style == "comparison":
+        other = paired_variant or variant
+        other_points = _variant_review_points(payload, other, limit=3)
+        item_count = max(len(points), len(other_points), 1)
+        items = []
+        for i in range(item_count):
+            items.append(
+                {
+                    "left": points[i] if i < len(points) else "",
+                    "right": other_points[i] if i < len(other_points) else "",
+                    "label": f"要点{i + 1}",
+                }
+            )
+        return {
+            "title": title,
+            "subtitle": subtitle,
+            "style": "comparison",
+            "tags": tags,
+            "compare_data": {
+                "left_title": title or "当前版本",
+                "right_title": str(other.get("title") or "补充说明"),
+                "items": items,
+            },
+        }
+
+    if style == "timeline":
+        return {
+            "title": title,
+            "subtitle": subtitle,
+            "style": "timeline",
+            "tags": tags,
+            "timeline_data": [
+                {
+                    "month": f"步骤{i + 1}",
+                    "title": point if len(point) <= 18 else f"步骤{i + 1}",
+                    "desc": point,
+                }
+                for i, point in enumerate(points)
+            ],
+        }
+
+    return {
+        "title": title,
+        "subtitle": subtitle,
+        "style": "info_card",
+        "tags": tags,
+        "key_points": points,
+    }
+
+
+def _build_payload_slide_topics(payload: dict[str, Any], style_hint: str | None) -> list[dict[str, Any]]:
+    variants = list(payload.get("variants") or [])
+    if not variants:
+        fallback_variant = {
+            "title": payload.get("cover_title") or "",
+            "angle": "",
+            "body": "",
+        }
+        variants = [fallback_variant]
+
+    first_variant = variants[0]
+    second_variant = variants[1] if len(variants) > 1 else first_variant
+    third_variant = variants[2] if len(variants) > 2 else second_variant
+
+    return [
+        _build_payload_cover_topic(payload, style_hint),
+        _build_payload_content_topic(payload, first_variant, style_hint, paired_variant=second_variant),
+        _build_payload_content_topic(payload, third_variant, style_hint, paired_variant=first_variant),
+    ]
+
+
+def _render_payload_slide_set(
+    run_dir: Path,
+    payload: dict[str, Any],
+    style_hint: str | None,
+    marker: str,
+    version_index: int,
+    current_slide_paths: list[str] | None = None,
+) -> list[Path]:
+    topics = _build_payload_slide_topics(payload, style_hint)
+    current_slide_paths = list(current_slide_paths or [])
+    rendered: list[Path] = []
+    for index, topic in enumerate(topics, start=1):
+        fallback = run_dir / "slides" / f"slide_{index}.png"
+        current_path = current_slide_paths[index - 1] if index - 1 < len(current_slide_paths) else None
+        target = _versioned_artifact_path(current_path, fallback, marker, version_index)
+        rendered.append(render_image(topic, target))
+    return rendered
+
+
+def _render_refreshed_cover(
+    run_dir: Path,
+    payload: dict[str, Any],
+    style_hint: str | None,
+    config: dict[str, Any],
+    dry_run: bool,
+    skip_image: bool,
+    refresh_index: int,
+    current_cover_path: str | None,
+) -> Path:
+    target_path = _versioned_artifact_path(
+        current_cover_path,
+        run_dir / "cover.png",
+        "refresh",
+        refresh_index,
+    )
+    if style_hint:
+        return render_image(_build_payload_slide_topics(payload, style_hint)[0], target_path)
+    if skip_image or dry_run:
+        _generate_placeholder(target_path, payload.get("cover_prompt", ""))
+        return target_path
+    return generate_image(
+        payload["cover_prompt"],
+        target_path,
+        config,
+        allow_placeholder=False,
+    )
+
+
+def _render_refreshed_graphics(
+    run_dir: Path,
+    payload: dict[str, Any],
+    style_hint: str,
+    refresh_index: int,
+    current_graphic_paths: list[str],
+) -> list[Path]:
+    slide_topics = _build_payload_slide_topics(payload, style_hint)[1:]
+    if not current_graphic_paths:
+        current_graphic_paths = [
+            str(run_dir / "slides" / "slide_2.png"),
+            str(run_dir / "slides" / "slide_3.png"),
+        ]
+    if len(current_graphic_paths) > len(slide_topics):
+        raise ValueError("当前任务的独立内容配图数量超出可刷新范围")
+
+    refreshed_paths: list[Path] = []
+    for index, topic in enumerate(slide_topics[: len(current_graphic_paths)]):
+        fallback = run_dir / "slides" / f"slide_{index + 2}.png"
+        target_path = _versioned_artifact_path(
+            current_graphic_paths[index] if index < len(current_graphic_paths) else None,
+            fallback,
+            "refresh",
+            refresh_index,
+        )
+        refreshed_paths.append(render_image(topic, target_path))
+    return refreshed_paths
+
+
+def _send_review_card(
+    payload: dict[str, Any],
+    image_keys: list[str],
+    note_id: str,
+    config: dict[str, Any],
+    dry_run: bool,
+    message_suffix: str,
+) -> str:
+    card_content = format_card_content(payload, 0)
+    tags_str = _review_card_tags(payload)
+    if dry_run:
+        message_id = f"msg_{message_suffix}"
+        print("  ⏭️  dry-run 模式，跳过发送新审核卡")
+        print(f"  新卡片内容:\n{card_content}")
+        return message_id
+
+    feishu = FeishuClient(config)
+    message_id = feishu.send_review_card(
+        image_key=image_keys,
+        title=_review_card_title(payload),
+        content=card_content,
+        tags=tags_str,
+        note_id=note_id,
+    )
+    print(f"  ✅ 新审核卡片已发送: {message_id}")
+    print("  ⏸️  已停在新初稿阶段，等你继续点通过或刷新图片。")
+    return message_id
+
+
+def _blocked_image_refresh(
+    run_dir: Path,
+    state: dict[str, Any],
+    action: str,
+    reason: str,
+    message: str,
+) -> dict[str, Any]:
+    print(f"  ⚠️  {message}")
+    state["review_action_mode"] = "image_refresh"
+    state["last_action"] = action
+    state["pending_revision_mode"] = None
+    save_review_state(run_dir, state)
+
+    result = {
+        "status": "blocked",
+        "reason": reason,
+        "message": message,
+        "task_dir": str(run_dir),
+        "steps": {
+            "action": action,
+            "reason": reason,
+        },
+    }
+    _save_result(run_dir, result)
+    return result
+
+
+def _blocked_missing_review_state(action: str, message_id: str, error: Exception) -> dict[str, Any]:
+    message = f"找不到卡片状态索引，无法继续处理: {error}"
+    print(f"  ⚠️  {message}")
+    return {
+        "status": "blocked",
+        "reason": "missing_review_state",
+        "message": message,
+        "task_dir": None,
+        "steps": {
+            "action": action,
+            "message_id": message_id,
+        },
+    }
+
+
+def _validate_multi_image_review_state(
+    run_dir: Path,
+    state: dict[str, Any],
+    action: str,
+    slide_paths: list[str],
+    image_keys: list[str],
+) -> dict[str, Any] | None:
+    if max(len(slide_paths), len(image_keys)) <= 1:
+        return None
+    if len(image_keys) == len(slide_paths):
+        return None
+    return _blocked_image_refresh(
+        run_dir,
+        state,
+        action,
+        reason="inconsistent_review_state",
+        message="当前审核状态的图片路径与飞书 image_keys 数量不一致，无法安全刷新图片。",
+    )
+
+
 def run_flow(
     topic: str,
     audience: str,
@@ -446,6 +1109,8 @@ def run_flow(
     skip_image: bool = False,
     auto_approve: bool = False,
     config_path: str | None = None,
+    base_image_path: str | None = None,
+    graphic_base_image_paths: list[str] | None = None,
 ) -> dict[str, Any]:
     """执行初稿阶段：生成素材包 + 多图渲染、发审核卡、保存状态后暂停。"""
 
@@ -459,20 +1124,32 @@ def run_flow(
     print(f"   模式：{'dry-run（本地测试）' if dry_run else '真实运行'}")
     print("=" * 60)
 
+    run_dir = make_run_dir("xhs_feishu", topic)
+    result["task_dir"] = str(run_dir)
+
     # ── Step 0: 匹配预设选题 ────────────────────────────────
     topic_data = _match_topic_data(topic)
 
     # ── Step 1: 生成素材包 ──────────────────────────────────
     print("\n📦 步骤 1/4：生成小红书素材包...")
-    # 如果匹配到预设选题，用选题里的标签和标题
-    if topic_data:
-        payload = generate_xhs_payload(topic, audience, config, dry_run)
-        payload["hashtags"] = topic_data.get("tags", payload["hashtags"])
-        payload["cover_title"] = topic_data.get("title", payload["cover_title"])
-    else:
-        payload = generate_xhs_payload(topic, audience, config, dry_run)
+    try:
+        # 如果匹配到预设选题，用选题里的标签和标题
+        if topic_data:
+            payload = generate_xhs_payload(topic, audience, config, dry_run)
+            payload["hashtags"] = topic_data.get("tags", payload["hashtags"])
+            payload["cover_title"] = topic_data.get("title", payload["cover_title"])
+        else:
+            payload = generate_xhs_payload(topic, audience, config, dry_run)
+    except Exception as e:
+        print(f"  ❌ 素材包生成失败: {e}")
+        result["status"] = "failed"
+        result["error"] = f"素材包生成失败: {e}"
+        _save_result(run_dir, result)
+        return result
+    review_image_templates = _review_image_template_state()
+    cover_base_image_path = _normalize_optional_path(base_image_path)
+    graphic_base_image_paths = _normalize_optional_paths(graphic_base_image_paths)
 
-    run_dir = make_run_dir("xhs_feishu", topic)
     save_json_file(run_dir / "payload.json", payload)
     print(f"  ✅ 素材包已生成，{len(payload['variants'])} 个版本")
     print(f"  📁 任务目录: {run_dir}")
@@ -491,7 +1168,15 @@ def run_flow(
     print("\n🎨 步骤 2/4：生成图片（多图模式）...")
     try:
         slide_paths = generate_slide_images(
-            run_dir, payload, topic_data, config, dry_run, skip_image
+            run_dir,
+            payload,
+            topic_data,
+            config,
+            dry_run,
+            skip_image,
+            image_templates=review_image_templates,
+            cover_base_image_path=cover_base_image_path,
+            graphic_base_image_paths=graphic_base_image_paths,
         )
     except (GeminiImageError, Exception) as e:
         print(f"  ❌ 图片生成失败: {e}")
@@ -544,7 +1229,7 @@ def run_flow(
                 note_id=note_id,
             )
             print(f"  ✅ 审核卡片已发送: {message_id} ({len(image_keys)}图)")
-            print("  ⏸️  已暂停在初稿审核阶段，等你点通过/修改/重写后再继续。")
+            print("  ⏸️  已暂停在初稿审核阶段，等你点通过或刷新图片后再继续。")
         except Exception as e:
             print(f"  ❌ 发送审核卡片失败: {e}")
             result["status"] = "failed"
@@ -561,6 +1246,9 @@ def run_flow(
         "payload": payload,
         "slide_paths": [str(p) for p in slide_paths],
         "image_keys": image_keys,
+        "image_templates": review_image_templates,
+        "cover_base_image_path": cover_base_image_path,
+        "graphic_base_image_paths": graphic_base_image_paths,
         # 向后兼容
         "cover_path": str(slide_paths[0]),
         "image_key": image_keys[0] if image_keys else "",
@@ -597,9 +1285,12 @@ def resume_review_action(
     revision_notes: str | None = None,
     revision_scope: str | None = None,
 ) -> dict[str, Any]:
-    """根据卡片动作继续执行：approve / modify / rewrite。"""
+    """根据卡片动作继续执行：approve / refresh_* / modify / rewrite。"""
 
-    run_dir, state = load_review_state(message_id)
+    try:
+        run_dir, state = load_review_state(message_id)
+    except FileNotFoundError as e:
+        return _blocked_missing_review_state(action, message_id, e)
     current_message_id = state.get("current_review_message_id")
     if current_message_id != message_id:
         print(
@@ -671,6 +1362,244 @@ def resume_review_action(
         print("=" * 60)
         return result
 
+    if action in {"refresh_cover", "refresh_graphics"}:
+        slide_paths = _normalized_slide_paths(run_dir, state)
+        image_keys = _normalized_image_keys(state)
+        state["review_action_mode"] = "image_refresh"
+        state["last_action"] = action
+        state["pending_revision_mode"] = None
+        invalid_state = _validate_multi_image_review_state(
+            run_dir,
+            state,
+            action,
+            slide_paths,
+            image_keys,
+        )
+        if invalid_state:
+            return invalid_state
+        prompt_templates = _persisted_image_templates(state)
+        style_hint = _persisted_review_style_hint(state)
+        cover_base_image_path = _normalize_optional_path(state.get("cover_base_image_path"))
+        graphic_base_image_paths = _normalize_optional_paths(state.get("graphic_base_image_paths"))
+
+        if action == "refresh_cover":
+            refresh_index = int(state.get("cover_refresh_count", 0)) + 1
+            try:
+                if cover_base_image_path:
+                    cover_path = _render_overlay_cover(
+                        run_dir=run_dir,
+                        payload=payload,
+                        image_templates=prompt_templates,
+                        base_image_path=cover_base_image_path,
+                        refresh_index=refresh_index,
+                        current_cover_path=state.get("cover_path"),
+                    )
+                elif prompt_templates:
+                    cover_path = _render_prompt_cover(
+                        run_dir=run_dir,
+                        payload=payload,
+                        config=config,
+                        dry_run=effective_dry_run,
+                        skip_image=skip_image,
+                        image_templates=prompt_templates,
+                        refresh_index=refresh_index,
+                        current_cover_path=state.get("cover_path"),
+                    )
+                else:
+                    cover_path = _render_refreshed_cover(
+                        run_dir=run_dir,
+                        payload=payload,
+                        style_hint=style_hint,
+                        config=config,
+                        dry_run=effective_dry_run,
+                        skip_image=skip_image,
+                        refresh_index=refresh_index,
+                        current_cover_path=state.get("cover_path"),
+                    )
+            except GeminiImageError as e:
+                print(f"  ❌ 刷新封面图失败: {e}")
+                result["status"] = "failed"
+                result["error"] = f"刷新封面图失败: {e}"
+                _save_result(run_dir, result)
+                return result
+
+            try:
+                uploaded_keys = upload_slide_images([cover_path], config, effective_dry_run)
+                image_key = uploaded_keys[0]
+                if effective_dry_run:
+                    print("  ⏭️  dry-run 模式，跳过上传")
+                else:
+                    print(f"  ✅ 新封面已上传: {image_key}")
+            except Exception as e:
+                print(f"  ❌ 刷新封面上传失败: {e}")
+                result["status"] = "failed"
+                result["error"] = f"刷新封面上传失败: {e}"
+                _save_result(run_dir, result)
+                return result
+
+            updated_slide_paths = [str(cover_path), *slide_paths[1:]]
+            updated_image_keys = [image_key, *image_keys[1:]]
+            new_message_id = _send_review_card(
+                payload=payload,
+                image_keys=updated_image_keys,
+                note_id=note_id,
+                config=config,
+                dry_run=effective_dry_run,
+                message_suffix=f"refresh_cover_{run_dir.name}_{refresh_index}",
+            )
+
+            state["status"] = "waiting_review"
+            state["slide_paths"] = updated_slide_paths
+            state["image_keys"] = updated_image_keys
+            state["cover_path"] = str(cover_path)
+            state["image_key"] = image_key
+            state["current_review_message_id"] = new_message_id
+            state["cover_refresh_count"] = refresh_index
+            save_review_state(run_dir, state)
+
+            result["status"] = "waiting_review"
+            result["steps"]["action"] = action
+            result["steps"]["review_card"] = new_message_id
+            _save_result(run_dir, result)
+
+            print("\n" + "=" * 60)
+            print("🎉 已完成图片刷新，等待下一轮审核")
+            print(f"   任务目录: {run_dir}")
+            print(f"   新审核卡片: {new_message_id}")
+            print("=" * 60)
+            return result
+
+        graphic_slot_count = max(len(slide_paths), len(image_keys)) - 1
+        if graphic_slot_count <= 0:
+            return _blocked_image_refresh(
+                run_dir,
+                state,
+                action,
+                reason="no_distinct_graphics_lane",
+                message="当前任务没有独立内容配图可刷新，仅有单张封面图。",
+            )
+        if not style_hint and not prompt_templates:
+            return _blocked_image_refresh(
+                run_dir,
+                state,
+                action,
+                reason="missing_graphics_style_metadata",
+                message="当前任务缺少持久化的多图样式元数据，无法安全刷新内容配图。",
+            )
+
+        refresh_index = int(state.get("graphics_refresh_count", 0)) + 1
+        current_graphic_paths = slide_paths[1 : 1 + graphic_slot_count]
+        if len(current_graphic_paths) != graphic_slot_count:
+            return _blocked_image_refresh(
+                run_dir,
+                state,
+                action,
+                reason="graphics_refresh_unsupported",
+                message="当前任务的内容配图轨道不完整，无法安全地只刷新内容配图。",
+            )
+        try:
+            if graphic_base_image_paths:
+                refreshed_graphics = _render_overlay_graphics(
+                    run_dir=run_dir,
+                    payload=payload,
+                    image_templates=prompt_templates,
+                    graphic_base_image_paths=graphic_base_image_paths,
+                    refresh_index=refresh_index,
+                    current_graphic_paths=current_graphic_paths,
+                )
+                if len(refreshed_graphics) < graphic_slot_count:
+                    fallback_graphics = _render_prompt_graphics(
+                        run_dir=run_dir,
+                        payload=payload,
+                        config=config,
+                        dry_run=effective_dry_run,
+                        skip_image=skip_image,
+                        image_templates=prompt_templates,
+                        refresh_index=refresh_index,
+                        current_graphic_paths=current_graphic_paths,
+                    )
+                    refreshed_graphics.extend(fallback_graphics[len(refreshed_graphics):graphic_slot_count])
+            elif prompt_templates:
+                refreshed_graphics = _render_prompt_graphics(
+                    run_dir=run_dir,
+                    payload=payload,
+                    config=config,
+                    dry_run=effective_dry_run,
+                    skip_image=skip_image,
+                    image_templates=prompt_templates,
+                    refresh_index=refresh_index,
+                    current_graphic_paths=current_graphic_paths,
+                )
+            else:
+                refreshed_graphics = _render_refreshed_graphics(
+                    run_dir=run_dir,
+                    payload=payload,
+                    style_hint=style_hint,
+                    refresh_index=refresh_index,
+                    current_graphic_paths=current_graphic_paths,
+                )
+        except Exception as e:
+            print(f"  ❌ 刷新内容配图失败: {e}")
+            result["status"] = "failed"
+            result["error"] = f"刷新内容配图失败: {e}"
+            _save_result(run_dir, result)
+            return result
+
+        try:
+            new_graphic_keys = upload_slide_images(refreshed_graphics, config, effective_dry_run)
+            if effective_dry_run:
+                print("  ⏭️  dry-run 模式，跳过上传")
+            else:
+                print(f"  ✅ 新内容配图已上传: {len(new_graphic_keys)} 张")
+        except Exception as e:
+            print(f"  ❌ 刷新内容配图上传失败: {e}")
+            result["status"] = "failed"
+            result["error"] = f"刷新内容配图上传失败: {e}"
+            _save_result(run_dir, result)
+            return result
+
+        cover_key = image_keys[0] if image_keys else str(state.get("image_key") or "")
+        if not cover_key:
+            return _blocked_image_refresh(
+                run_dir,
+                state,
+                action,
+                reason="missing_cover_asset",
+                message="当前任务缺少封面图上传记录，无法在不重跑全文案的前提下刷新内容配图。",
+            )
+
+        updated_slide_paths = [slide_paths[0], *[str(path) for path in refreshed_graphics]]
+        updated_image_keys = [cover_key, *new_graphic_keys]
+        new_message_id = _send_review_card(
+            payload=payload,
+            image_keys=updated_image_keys,
+            note_id=note_id,
+            config=config,
+            dry_run=effective_dry_run,
+            message_suffix=f"refresh_graphics_{run_dir.name}_{refresh_index}",
+        )
+
+        state["status"] = "waiting_review"
+        state["slide_paths"] = updated_slide_paths
+        state["image_keys"] = updated_image_keys
+        state["cover_path"] = slide_paths[0]
+        state["image_key"] = cover_key
+        state["current_review_message_id"] = new_message_id
+        state["graphics_refresh_count"] = refresh_index
+        save_review_state(run_dir, state)
+
+        result["status"] = "waiting_review"
+        result["steps"]["action"] = action
+        result["steps"]["review_card"] = new_message_id
+        _save_result(run_dir, result)
+
+        print("\n" + "=" * 60)
+        print("🎉 已完成图片刷新，等待下一轮审核")
+        print(f"   任务目录: {run_dir}")
+        print(f"   新审核卡片: {new_message_id}")
+        print("=" * 60)
+        return result
+
     if action not in {"modify", "rewrite"}:
         raise ValueError(f"不支持的动作: {action}")
 
@@ -678,16 +1607,23 @@ def resume_review_action(
         print(f"\n✏️  收到 {action}，将按修改说明重新生成初稿...")
     else:
         print(f"\n✏️  收到 {action}，开始重新生成初稿...")
-    new_payload = generate_xhs_payload(
-        topic,
-        audience,
-        config,
-        dry_run=effective_dry_run,
-        revision_mode=action,
-        revision_notes=revision_notes,
-        revision_scope=revision_scope,
-        existing_payload=payload,
-    )
+    try:
+        new_payload = generate_xhs_payload(
+            topic,
+            audience,
+            config,
+            dry_run=effective_dry_run,
+            revision_mode=action,
+            revision_notes=revision_notes,
+            revision_scope=revision_scope,
+            existing_payload=payload,
+        )
+    except Exception as e:
+        print(f"  ❌ 重新生成素材包失败: {e}")
+        result["status"] = "failed"
+        result["error"] = f"重新生成素材包失败: {e}"
+        _save_result(run_dir, result)
+        return result
     save_json_file(run_dir / "payload.json", new_payload)
     save_text_file(run_dir / "cover_title.txt", new_payload["cover_title"] + "\n")
     save_text_file(run_dir / "cover_prompt.txt", new_payload["cover_prompt"] + "\n")
@@ -697,26 +1633,106 @@ def resume_review_action(
             f"# {v['title']}\n\n**角度：** {v['angle']}\n\n{v['body']}\n",
         )
 
-    try:
-        cover_path = generate_cover_art(run_dir, new_payload, config, effective_dry_run, skip_image)
-    except GeminiImageError as e:
-        print(f"  ❌ 重新生成封面图失败: {e}")
-        result["status"] = "failed"
-        result["error"] = f"重新生成封面图失败: {e}"
+    current_slide_paths = _normalized_slide_paths(run_dir, state)
+    style_hint = _persisted_review_style_hint(state)
+    prompt_templates = _persisted_image_templates(state)
+    current_image_keys = _normalized_image_keys(state)
+    cover_base_image_path = _normalize_optional_path(state.get("cover_base_image_path"))
+    graphic_base_image_paths = _normalize_optional_paths(state.get("graphic_base_image_paths"))
+    regenerated_slide_paths: list[Path] | None = None
+    regenerated_image_keys: list[str] | None = None
+
+    if max(len(current_slide_paths), len(current_image_keys)) > 1 and not prompt_templates:
+        print("  ⚠️  当前旧版多图审核状态缺少模板元数据，无法安全继续修改/重写。")
+        state["last_action"] = action
+        state["pending_revision_mode"] = None
+        result["status"] = "blocked"
+        result["reason"] = "missing_image_templates_metadata"
+        result["message"] = "当前旧版多图审核状态缺少模板元数据，无法安全继续修改/重写。"
+        result["steps"]["action"] = action
+        result["steps"]["reason"] = "missing_image_templates_metadata"
+        save_review_state(run_dir, state)
         _save_result(run_dir, result)
         return result
-    try:
-        image_key = upload_cover_image(cover_path, config, effective_dry_run)
-        if effective_dry_run:
-            print("  ⏭️  dry-run 模式，跳过上传")
-        else:
-            print(f"  ✅ 新封面已上传: {image_key}")
-    except Exception as e:
-        print(f"  ❌ 重新上传失败: {e}")
-        result["status"] = "failed"
-        result["error"] = f"重新上传失败: {e}"
-        _save_result(run_dir, result)
-        return result
+
+    if prompt_templates:
+        revision_index = int(state.get("revision_count", 0)) + 1
+        try:
+            regenerated_slide_paths = _render_mixed_slide_set(
+                run_dir=run_dir,
+                payload=new_payload,
+                config=config,
+                dry_run=effective_dry_run,
+                skip_image=skip_image,
+                image_templates=prompt_templates,
+                cover_base_image_path=cover_base_image_path,
+                graphic_base_image_paths=graphic_base_image_paths,
+                marker="rev",
+                version_index=revision_index,
+                current_slide_paths=current_slide_paths,
+            )
+        except Exception as e:
+            print(f"  ❌ 重新生成多图审核素材失败: {e}")
+            result["status"] = "failed"
+            result["error"] = f"重新生成多图审核素材失败: {e}"
+            _save_result(run_dir, result)
+            return result
+        try:
+            regenerated_image_keys = upload_slide_images(regenerated_slide_paths, config, effective_dry_run)
+            if effective_dry_run:
+                print("  ⏭️  dry-run 模式，跳过上传")
+            else:
+                print(f"  ✅ 新审核图片已上传: {len(regenerated_image_keys)} 张")
+        except Exception as e:
+            print(f"  ❌ 重新上传多图审核素材失败: {e}")
+            result["status"] = "failed"
+            result["error"] = f"重新上传多图审核素材失败: {e}"
+            _save_result(run_dir, result)
+            return result
+        cover_path = regenerated_slide_paths[0]
+        image_key = regenerated_image_keys[0]
+    elif style_hint:
+        try:
+            cover_path = generate_cover_art(run_dir, new_payload, config, effective_dry_run, skip_image)
+        except GeminiImageError as e:
+            print(f"  ❌ 重新生成封面图失败: {e}")
+            result["status"] = "failed"
+            result["error"] = f"重新生成封面图失败: {e}"
+            _save_result(run_dir, result)
+            return result
+        try:
+            image_key = upload_cover_image(cover_path, config, effective_dry_run)
+            if effective_dry_run:
+                print("  ⏭️  dry-run 模式，跳过上传")
+            else:
+                print(f"  ✅ 新封面已上传: {image_key}")
+        except Exception as e:
+            print(f"  ❌ 重新上传失败: {e}")
+            result["status"] = "failed"
+            result["error"] = f"重新上传失败: {e}"
+            _save_result(run_dir, result)
+            return result
+    else:
+        try:
+            cover_path = generate_cover_art(run_dir, new_payload, config, effective_dry_run, skip_image)
+        except GeminiImageError as e:
+            print(f"  ❌ 重新生成封面图失败: {e}")
+            result["status"] = "failed"
+            result["error"] = f"重新生成封面图失败: {e}"
+            _save_result(run_dir, result)
+            return result
+        try:
+            image_key = upload_cover_image(cover_path, config, effective_dry_run)
+            if effective_dry_run:
+                print("  ⏭️  dry-run 模式，跳过上传")
+            else:
+                print(f"  ✅ 新封面已上传: {image_key}")
+        except Exception as e:
+            print(f"  ❌ 重新上传失败: {e}")
+            result["status"] = "failed"
+            result["error"] = f"重新上传失败: {e}"
+            _save_result(run_dir, result)
+            return result
 
     card_content = format_card_content(new_payload, 0)
     tags_str = " ".join(f"#{t}" for t in new_payload["hashtags"][:6])
@@ -727,21 +1743,28 @@ def resume_review_action(
     else:
         feishu = FeishuClient(config)
         new_message_id = feishu.send_review_card(
-            image_key=image_key,
+            image_key=regenerated_image_keys if regenerated_image_keys else image_key,
             title=f"🎨 小红书笔记审核 — {new_payload['cover_title']}",
             content=card_content,
             tags=tags_str,
             note_id=note_id,
         )
         print(f"  ✅ 新审核卡片已发送: {new_message_id}")
-        print("  ⏸️  已停在新初稿阶段，等你继续点通过/修改/重写。")
+        print("  ⏸️  已停在新初稿阶段，等你继续点通过或刷新图片。")
 
     state["status"] = "waiting_review"
     state["payload"] = new_payload
+    if regenerated_slide_paths and regenerated_image_keys:
+        state["slide_paths"] = [str(path) for path in regenerated_slide_paths]
+        state["image_keys"] = list(regenerated_image_keys)
+    else:
+        state["slide_paths"] = [str(cover_path)]
+        state["image_keys"] = [image_key]
     state["cover_path"] = str(cover_path)
     state["image_key"] = image_key
     state["current_review_message_id"] = new_message_id
     state["revision_count"] = int(state.get("revision_count", 0)) + 1
+    state["review_action_mode"] = "revision"
     state["last_action"] = action
     state["pending_revision_mode"] = None
     if revision_notes:
@@ -793,6 +1816,8 @@ def main():
     parser.add_argument("--audience", default="教育行业运营负责人", help="目标人群")
     parser.add_argument("--dry-run", action="store_true", help="本地测试模式")
     parser.add_argument("--skip-image", action="store_true", help="跳过真实生图，改用占位图")
+    parser.add_argument("--base-image", default=None, help="客户提供的封面底图路径")
+    parser.add_argument("--graphic-base-image", action="append", default=None, help="客户提供的正文配图底图路径，可传多次")
     parser.add_argument("--json", action="store_true", help="以 JSON 格式输出结果")
     parser.add_argument(
         "--mode",
@@ -802,7 +1827,7 @@ def main():
     )
     parser.add_argument(
         "--action",
-        choices=["approve", "modify", "rewrite"],
+        choices=["approve", "refresh_cover", "refresh_graphics", "modify", "rewrite"],
         default=None,
         help="resume 模式下的卡片动作",
     )
@@ -863,6 +1888,8 @@ def main():
             raise SystemExit("--mode request-edit 时必须同时提供 --action")
         if not args.message_id:
             raise SystemExit("--mode request-edit 时必须同时提供 --message-id")
+        if args.action not in {"modify", "rewrite"}:
+            raise SystemExit("--mode request-edit 仅支持 modify/rewrite，不接受 refresh_* 动作")
         result = request_revision_notes(
             action=args.action,
             message_id=args.message_id,
@@ -884,6 +1911,8 @@ def main():
         skip_image=args.skip_image,
         auto_approve=args.auto_approve,
         config_path=args.config,
+        base_image_path=args.base_image,
+        graphic_base_image_paths=args.graphic_base_image,
     )
     if args.json:
         print("__JSON_RESULT__")

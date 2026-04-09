@@ -34,7 +34,7 @@ metadata:
 - "弄个小红书帖子"
 - "来个小红书"
 - "小红书卡片交互"
-- "通过 / 修改 / 重写 小红书卡片"
+- "通过 / 刷新封面图 / 刷新内容配图 小红书卡片"
 - "帮我生成武汉中考/升学/XX学科的小红书笔记"
 - "批量生成小红书笔记"
 - 任何包含"小红书"三个字 + 上述任意动词/名词的消息
@@ -61,7 +61,7 @@ metadata:
 ### 第二步：调用脚本生成初稿并发送审核卡片
 
 ```bash
-cd "/Users/lmsx/Documents/Playground/edu-media-openclaw" && "/Users/lmsx/Documents/Playground/edu-media-openclaw/.venv/bin/python" scripts/xhs_feishu_flow.py --topic "用户提取的主题" --audience "提取的受众" --mode draft
+cd "/Users/lmsx/.config/superpowers/worktrees/edu-media-openclaw/codex-wuhan-xhs-workflow" && "/Users/lmsx/.config/superpowers/worktrees/edu-media-openclaw/codex-wuhan-xhs-workflow/.venv/bin/python" scripts/xhs_feishu_flow.py --topic "用户提取的主题" --audience "提取的受众" --mode draft
 ```
 
 **v3.0 新能力：**
@@ -69,6 +69,7 @@ cd "/Users/lmsx/Documents/Playground/edu-media-openclaw" && "/Users/lmsx/Documen
 - 匹配到预设选题时，使用 HTML 模板渲染 3 张高质量图片（封面+内容+CTA）
 - 未匹配到时，回退到 AI 生成封面图（单图模式）
 - 审核卡片展示多张图片预览
+- 客户如果补发参考图片、图片 URL 或参考链接，可进入严格参考生图模式，优先按参考素材的颜色和排版生成
 
 **参数说明：**
 - `--topic`：填入从用户消息中提取的主题（必须）
@@ -80,14 +81,15 @@ cd "/Users/lmsx/Documents/Playground/edu-media-openclaw" && "/Users/lmsx/Documen
 脚本执行完毕后：
 1. 告诉用户"小红书初稿已生成并发送到飞书审核"
 2. 告诉用户去飞书查看审核卡片
-3. 卡片上有✅通过 / ✏️修改 / ❌重写按钮
-4. 如果用户点修改/重写，先打开"修改说明卡"，等用户填写修改意见后再继续
-5. 只有用户点通过后，才进入最终稿阶段
+3. 卡片上有✅通过 / 刷新封面图 / 刷新内容配图按钮
+4. 如果用户点刷新封面图/刷新内容配图，直接续跑图片刷新，不再打开修改说明卡
+5. 如果用户点修改/重写，历史卡片仍兼容，但新按钮不再默认使用这两个动作
+6. 只有用户点通过后，才进入最终稿阶段
 
 ### 第四步：处理卡片回流
 
 当飞书卡片按钮被点击后，OpenClaw 会收到一条新的"卡片交互"消息，内容里会带：
-- `小红书卡片交互：通过/修改/重写`
+- `小红书卡片交互：通过/刷新封面图/刷新内容配图`
 - `source_message_id=...`
 - 也可能包含 `card_message_id=...` 或 `reply_to_message_id=...`
 - 如果消息里带 `resume_command=...`，优先直接执行这条命令，不要自己重写参数
@@ -96,11 +98,12 @@ cd "/Users/lmsx/Documents/Playground/edu-media-openclaw" && "/Users/lmsx/Documen
 这时不要重新从头生成，而是：
 
 ```bash
-cd "/Users/lmsx/Documents/Playground/edu-media-openclaw" && "/Users/lmsx/Documents/Playground/edu-media-openclaw/.venv/bin/python" scripts/xhs_feishu_flow.py --topic "同一主题" --mode resume --action approve --message-id "source_message_id 中的值"
+cd "/Users/lmsx/.config/superpowers/worktrees/edu-media-openclaw/codex-wuhan-xhs-workflow" && "/Users/lmsx/.config/superpowers/worktrees/edu-media-openclaw/codex-wuhan-xhs-workflow/.venv/bin/python" scripts/xhs_feishu_flow.py --topic "同一主题" --mode resume --action approve --message-id "source_message_id 中的值"
 ```
 
 - 回流模式主要靠 `--message-id` 定位任务，`--topic` 只用于日志，必要时也可以沿用原主题但不是关键
-- 如果卡片消息是"修改"或"重写"，先打开"修改说明卡"，不要立刻重生成
+- 如果卡片消息是"刷新封面图"或"刷新内容配图"，直接续跑 `--mode resume --action refresh_cover|refresh_graphics`
+- 如果卡片消息是"修改"或"重写"，历史卡片仍兼容，先打开"修改说明卡"，不要立刻重生成
 - 如果是 `通过`，就继续发送最终稿卡片
 - 如果是 `修改` 或 `重写`，先等用户填完修改说明，再重新生成一版审核卡
 - 如果消息里已经给了 `resume_command`，直接照着执行即可，`--message-id`
@@ -150,7 +153,7 @@ AI 提取主题："武汉中考数学压轴题"
   ↓
 步骤3：上传 3 张图片到飞书
   ↓
-步骤4：发送多图审核卡片到飞书（带 ✅通过/✏️修改/❌重写 按钮）
+步骤4：发送多图审核卡片到飞书（带 ✅通过/刷新封面图/刷新内容配图 按钮）
   ↓
 用户点击卡片按钮
   ↓
@@ -166,10 +169,10 @@ AI 提取主题："武汉中考数学压轴题"
 
 **助手执行：**
 ```bash
-cd "/Users/lmsx/Documents/Playground/edu-media-openclaw" && "/Users/lmsx/Documents/Playground/edu-media-openclaw/.venv/bin/python" scripts/xhs_feishu_flow.py --topic "武汉中考数学压轴题" --audience "初三学生家长" --mode draft
+cd "/Users/lmsx/.config/superpowers/worktrees/edu-media-openclaw/codex-wuhan-xhs-workflow" && "/Users/lmsx/.config/superpowers/worktrees/edu-media-openclaw/codex-wuhan-xhs-workflow/.venv/bin/python" scripts/xhs_feishu_flow.py --topic "武汉中考数学压轴题" --audience "初三学生家长" --mode draft
 ```
 
-**助手回复：** ✅ 小红书初稿已生成（3张图片+3版文案），已发送到飞书审核。请去飞书查看卡片，点通过/修改/重写。
+**助手回复：** ✅ 小红书初稿已生成（3张图片+3版文案），已发送到飞书审核。请去飞书查看卡片，点通过/刷新封面图/刷新内容配图。
 
 ---
 
@@ -177,7 +180,7 @@ cd "/Users/lmsx/Documents/Playground/edu-media-openclaw" && "/Users/lmsx/Documen
 
 **助手执行：**
 ```bash
-cd "/Users/lmsx/Documents/Playground/edu-media-openclaw" && "/Users/lmsx/Documents/Playground/edu-media-openclaw/.venv/bin/python" scripts/xhs_feishu_flow.py --topic "初升高时间轴" --audience "初二初三学生家长" --mode draft
+cd "/Users/lmsx/.config/superpowers/worktrees/edu-media-openclaw/codex-wuhan-xhs-workflow" && "/Users/lmsx/.config/superpowers/worktrees/edu-media-openclaw/codex-wuhan-xhs-workflow/.venv/bin/python" scripts/xhs_feishu_flow.py --topic "初升高时间轴" --audience "初二初三学生家长" --mode draft
 ```
 
 ---
@@ -186,7 +189,7 @@ cd "/Users/lmsx/Documents/Playground/edu-media-openclaw" && "/Users/lmsx/Documen
 
 **助手执行：**
 ```bash
-cd "/Users/lmsx/Documents/Playground/edu-media-openclaw" && "/Users/lmsx/Documents/Playground/edu-media-openclaw/.venv/bin/python" scripts/xhs_feishu_flow.py --topic "宠物护理攻略" --audience "养宠人群" --mode draft
+cd "/Users/lmsx/.config/superpowers/worktrees/edu-media-openclaw/codex-wuhan-xhs-workflow" && "/Users/lmsx/.config/superpowers/worktrees/edu-media-openclaw/codex-wuhan-xhs-workflow/.venv/bin/python" scripts/xhs_feishu_flow.py --topic "宠物护理攻略" --audience "养宠人群" --mode draft
 ```
 
 （此主题不在预设选题库中，将自动回退到AI生成封面图的单图模式）
@@ -196,7 +199,7 @@ cd "/Users/lmsx/Documents/Playground/edu-media-openclaw" && "/Users/lmsx/Documen
 ### 查看选题库
 
 ```bash
-cd "/Users/lmsx/Documents/Playground/edu-media-openclaw" && "/Users/lmsx/Documents/Playground/edu-media-openclaw/.venv/bin/python" scripts/xhs_topic_generator.py
+cd "/Users/lmsx/.config/superpowers/worktrees/edu-media-openclaw/codex-wuhan-xhs-workflow" && "/Users/lmsx/.config/superpowers/worktrees/edu-media-openclaw/codex-wuhan-xhs-workflow/.venv/bin/python" scripts/xhs_topic_generator.py
 ```
 
 ### 公众号内容生成
@@ -204,13 +207,13 @@ cd "/Users/lmsx/Documents/Playground/edu-media-openclaw" && "/Users/lmsx/Documen
 当用户说"帮我写一篇公众号文章"时：
 
 ```bash
-cd "/Users/lmsx/Documents/Playground/edu-media-openclaw" && "/Users/lmsx/Documents/Playground/edu-media-openclaw/.venv/bin/python" scripts/wechat_generate.py prepare --topic "主题" --audience "目标读者"
+cd "/Users/lmsx/.config/superpowers/worktrees/edu-media-openclaw/codex-wuhan-xhs-workflow" && "/Users/lmsx/.config/superpowers/worktrees/edu-media-openclaw/codex-wuhan-xhs-workflow/.venv/bin/python" scripts/wechat_generate.py prepare --topic "主题" --audience "目标读者"
 ```
 
 ### 环境检查
 
 ```bash
-cd "/Users/lmsx/Documents/Playground/edu-media-openclaw" && "/Users/lmsx/Documents/Playground/edu-media-openclaw/.venv/bin/python" scripts/check_env.py --write
+cd "/Users/lmsx/.config/superpowers/worktrees/edu-media-openclaw/codex-wuhan-xhs-workflow" && "/Users/lmsx/.config/superpowers/worktrees/edu-media-openclaw/codex-wuhan-xhs-workflow/.venv/bin/python" scripts/check_env.py --write
 ```
 
 ## 重要限制
